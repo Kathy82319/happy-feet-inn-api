@@ -1,0 +1,16 @@
+name = "happy-feet-inn-api"
+main = "src/index.js"
+compatibility_date = "2024-01-29" # 你可以使用今天的日期
+
+# 我們未來會在這裡加上 KV 的設定
+# [[kv_namespaces]]
+# binding = "ROOMS_KV"
+# id = "1MOFcdTXg7x1NK-yaYoHHoHwC6NWGbWF4K64wNUmdD1w"
+
+[vars]
+# 請務必將這裡的 ID 換成你自己的 Google Sheet ID
+GOOGLE_SHEET_ID = "1aBcDeFgHiJkLmNoPqRsTuVwXyZ_YOUR_SHEET_ID"
+
+[triggers]
+# "*/5 * * * *" 代表每 5 分鐘執行一次
+crons = ["*/5 * * * *"]
