@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "build": "mkdir -p dist && cp src/index.js dist/_worker.js",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"
   },
