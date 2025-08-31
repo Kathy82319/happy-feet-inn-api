@@ -1,6 +1,6 @@
 name = "happy-feet-inn-api"
 main = "src/index.js"
-compatibility_date = "2024-01-29" # 你可以使用今天的日期
+compatibility_date = "2025-09-01" # 你可以使用今天的日期
 
 # 我們未來會在這裡加上 KV 的設定
 # [[kv_namespaces]]
