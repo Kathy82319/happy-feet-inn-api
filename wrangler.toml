@@ -15,4 +15,4 @@ GOOGLE_SHEET_ID = "1aBcDeFgHiJkLmNoPqRsTuVwXyZ_YOUR_SHEET_ID"
 # "*/5 * * * *" 代表每 5 分鐘執行一次
 crons = ["*/5 * * * *"]
 
-# Triggering a new deploy at 2025-09-01
+# Final trigger
