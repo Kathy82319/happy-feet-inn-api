@@ -78,17 +78,64 @@ async function syncGoogleSheetToKV(env) {
   await env.ROOMS_KV.put('all_rooms', JSON.stringify(rooms));
 }
 
+/**
+ * 輔助函式：將 PEM 格式的金鑰字串，轉換為加密函式庫所需的 ArrayBuffer 格式
+ * @param {string} pem - PEM 格式的金鑰字串
+ * @returns {ArrayBuffer}
+ */
+function pemToArrayBuffer(pem) {
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\s/g, ''); // 移除所有空白和換行符
+  const binary_string = atob(b64); // atob() 是 Base64 解碼的標準函式
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+/**
+ * 輔助函式：使用服務帳號金鑰產生 Google API 的 Access Token
+ * @param {string} serviceAccountKeyJson - 存在 Secret 中的服務帳號金鑰 (JSON 字串)
+ * @returns {Promise<string>} - Google API 的存取令牌
+ */
 async function getGoogleAuthToken(serviceAccountKeyJson) {
-  // ... (此處程式碼完全不變)
   const serviceAccount = JSON.parse(serviceAccountKeyJson);
-  const jwt = await new SignJWT({ scope: 'https://www.googleapis.com/auth/spreadsheets.readonly' })
+
+  // 【關鍵修正】在這裡，我們先將金鑰字串「鑄造」成實體鑰匙
+  const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
+
+  const jwt = await new SignJWT({
+    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+  })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .setIssuer(serviceAccount.client_email)
     .setAudience('https://oauth2.googleapis.com/token')
     .setExpirationTime('1h')
     .setIssuedAt()
-    .sign(await crypto.subtle.importKey( "pkcs8", (serviceAccount.private_key).replace(/\\n/g, "\n"), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"] ));
-  const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt, }), });
+    .sign(await crypto.subtle.importKey(
+        "pkcs8",
+        privateKeyBuffer, // <-- 將鑄造好的實體鑰匙交給開鎖機器
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["sign"]
+    ));
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+
   const tokens = await response.json();
+  if (!tokens.access_token) {
+    throw new Error(`Failed to get access token: ${JSON.stringify(tokens)}`);
+  }
   return tokens.access_token;
 }
