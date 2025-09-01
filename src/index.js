@@ -4,36 +4,71 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 原本的 API 端點，保持不變
-    if (url.pathname === '/api/rooms') {
+    // --- GET /api/rooms: 取得房型列表 (保持不變) ---
+    if (url.pathname === '/api/rooms' && request.method === 'GET') {
       const roomsData = await env.ROOMS_KV.get('all_rooms', 'json');
       if (!roomsData) {
-        return new Response(JSON.stringify({ error: 'Rooms data not found. Please wait for the next sync.' }), {
+        return new Response(JSON.stringify({ error: 'Rooms data not found.' }), {
           status: 404,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         });
       }
       return new Response(JSON.stringify(roomsData), {
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        },
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
-    // 【新增的秘密按鈕】手動觸發同步的 API 端點
-    if (url.pathname === '/api/sync') {
+    // --- 手動同步觸發 (保持不變) ---
+    if (url.pathname === '/api/sync' && request.method === 'GET') {
       try {
-        console.log("Manual sync triggered via API...");
-        // 手動執行我們的主同步函式
         await syncGoogleSheetToKV(env);
-        // 如果成功，回傳成功訊息
         return new Response("Manual sync completed successfully!", { status: 200 });
       } catch (error) {
-        // 如果失敗，在日誌中印出詳細錯誤，並回傳錯誤訊息
         console.error("Manual sync failed:", error.stack);
         return new Response(`Sync failed: ${error.message}`, { status: 500 });
       }
+    }
+
+    // --- 【全新功能】POST /api/bookings: 建立新訂單 ---
+    if (url.pathname === '/api/bookings' && request.method === 'POST') {
+      try {
+        const bookingData = await request.json(); // 解析前端傳來的 JSON 資料
+
+        // 簡單的資料驗證
+        if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
+          return new Response(JSON.stringify({ error: 'Missing required booking data.' }), {
+            status: 400, // 400 代表 "Bad Request" (請求格式錯誤)
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        
+        // 執行寫入 Google Sheet 的核心任務
+        const newBookingId = await writeBookingToSheet(env, bookingData);
+
+        // 回傳成功訊息與新的訂單 ID
+        return new Response(JSON.stringify({ success: true, bookingId: newBookingId }), {
+          status: 201, // 201 代表 "Created" (已建立)
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+
+      } catch (error) {
+        console.error("Booking creation failed:", error.stack);
+        return new Response(JSON.stringify({ error: `Booking creation failed: ${error.message}` }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
+    
+    // 處理跨來源 OPTIONS 請求 (CORS) - 這是前端呼叫 API 的必要步驟
+    if (request.method === 'OPTIONS') {
+        return new Response(null, {
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+            },
+        });
     }
 
     return new Response('你好，我是快樂腳旅棧的 API 伺服器！');
@@ -51,7 +86,61 @@ export default {
   },
 };
 
-// --- 下方的 syncGoogleSheetToKV 和 getGoogleAuthToken 函式保持完全不變 ---
+
+// --- 【全新函式】將訂單資料寫入 Google Sheet ---
+async function writeBookingToSheet(env, booking) {
+  const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+  const sheetId = env.GOOGLE_SHEET_ID;
+  
+  // Google Sheets API 的 "append" 端點
+  const range = 'bookings!A:K'; // 我們要操作 `bookings` 分頁的所有欄位
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
+
+  const timestamp = new Date().toISOString();
+  const bookingId = `HB-${Date.now()}`; // 產生一個簡單的訂單 ID
+
+  // 準備要寫入的那一「列」資料
+  // 【重要】這裡的順序，必須和 `bookings` 分頁的欄位順序完全一致
+  const newRow = [
+    bookingId,
+    timestamp,
+    booking.lineUserId || '', // 從前端傳來的資料
+    booking.lineDisplayName || '',
+    booking.roomId,
+    booking.checkInDate,
+    booking.checkOutDate,
+    booking.guestName,
+    booking.guestPhone || '',
+    booking.totalPrice || 0,
+    'PENDING_CONFIRMATION', // 預設訂單狀態
+  ];
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      values: [newRow], // API 要求 `values` 是一個包含多列的陣列
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Google Sheets API write error: ${JSON.stringify(errorData)}`);
+  }
+
+  return bookingId; // 將新的訂單 ID 回傳
+}
+
+
+// --- 下方的 syncGoogleSheetToKV 和 getGoogleAuthToken 函式請保持不變 ---
+// (除了剛剛修改的 scope 之外)
+
+async function syncGoogleSheetToKV(env) { /* ... */ }
+function pemToArrayBuffer(pem) { /* ... */ }
+async function getGoogleAuthToken(serviceAccountKeyJson) { /* ... */ }
 
 async function syncGoogleSheetToKV(env) {
   // ... (此處程式碼完全不變)
@@ -109,7 +198,7 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
   const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
 
   const jwt = await new SignJWT({
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
   })
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .setIssuer(serviceAccount.client_email)
