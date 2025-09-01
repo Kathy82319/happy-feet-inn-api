@@ -1,3 +1,9 @@
+#user-picture {
+    width: 30px;  /* 從 40px 改成 30px */
+    height: 30px; /* 從 40px 改成 30px */
+    border-radius: 50%;
+}
+
 /* --- 新增的房型卡片樣式 --- */
 #room-list-container {
     padding: 0 1rem;
