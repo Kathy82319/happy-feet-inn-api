@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const LIFF_ID = "2008032417-DPqYdL7p";
     // 【新增】定義後端 API 的網址
-    const API_BASE_URL = "https://liff.line.me/2008032417-DPqYdL7p";
+    const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     // 頁面元素
     const loadingSpinner = document.getElementById('loading-spinner');
