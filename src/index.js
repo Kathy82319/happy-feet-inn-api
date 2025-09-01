@@ -135,13 +135,6 @@ async function writeBookingToSheet(env, booking) {
 }
 
 
-// --- 下方的 syncGoogleSheetToKV 和 getGoogleAuthToken 函式請保持不變 ---
-// (除了剛剛修改的 scope 之外)
-
-async function syncGoogleSheetToKV(env) { /* ... */ }
-function pemToArrayBuffer(pem) { /* ... */ }
-async function getGoogleAuthToken(serviceAccountKeyJson) { /* ... */ }
-
 async function syncGoogleSheetToKV(env) {
   // ... (此處程式碼完全不變)
   const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
