@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "build": "esbuild src/index.js --bundle --outfile=dist/_worker.js --format=esm",
+    "build": "esbuild src/index.js --bundle --outfile=dist/_worker.js --format=esm && cp -r public/. dist/",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"
   },

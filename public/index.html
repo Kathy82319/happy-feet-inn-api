@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>快樂腳旅棧 - 線上訂房</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>快樂腳旅棧</h1>
+        <div id="user-profile" class="hidden">
+            <img id="user-picture" src="" alt="User Picture">
+            <p>你好, <span id="user-name"></span></p>
+        </div>
+    </header>
+
+    <main id="main-content" class="hidden">
+        <p>歡迎使用線上訂房系統！</p>
+    </main>
+
+    <div id="loading-spinner">
+        <div class="spinner"></div>
+        <p>正在載入...</p>
+    </div>
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="liff-app.js"></script>
+</body>
+</html>
