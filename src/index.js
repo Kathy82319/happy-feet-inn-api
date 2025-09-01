@@ -50,7 +50,7 @@ export default {
           status: 201, // 201 代表 "Created" (已建立)
           headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         });
-
+ 
       } catch (error) {
         console.error("Booking creation failed:", error.stack);
         return new Response(JSON.stringify({ error: `Booking creation failed: ${error.message}` }), {
