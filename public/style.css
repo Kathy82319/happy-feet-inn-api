@@ -241,3 +241,8 @@ main {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* --- 【新增】讓日曆選擇的區間，加上背景顏色 --- */
+.datepicker-cell.in-range:not(.selected):not(.start-date):not(.end-date) {
+    background-color: rgba(0, 185, 0, 0.2) !important; /* 淡綠色背景 */
+}
