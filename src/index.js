@@ -10,8 +10,35 @@ export default {
     // 如果請求的路徑是以 /api/ 開頭，就進入後端 API 處理邏輯
     if (pathname.startsWith('/api/')) {
 
-       // --- 【新增的、最終的診斷日誌】 ---
-       // 讓程式親口告訴我們，它對 booking 路由的判斷結果是什麼
+    // --- 【新增的、最終的診斷日誌】 ---
+    // 讓程式親口告訴我們，它對 booking 路由的判斷結果是什麼
+    const isBookingRoute = (pathname === '/api/bookings' && method === 'POST');
+    console.log(`[Diagnostic Log] Checking for booking route. Path is '${pathname}', Method is '${method}'. Is match? --> ${isBookingRoute}`);
+
+      // GET /api/rooms: 取得房型列表
+      if (pathname === '/api/rooms' && request.method === 'GET') {
+        const roomsData = await env.ROOMS_KV.get('all_rooms', 'json');
+        if (!roomsData) {
+          return new Response(JSON.stringify({ error: 'Rooms data not found.' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        return new Response(JSON.stringify(roomsData), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+
+      // GET /api/sync: 手動觸發同步
+      if (pathname === '/api/sync' && request.method === 'GET') {
+        try {
+          await syncGoogleSheetToKV(env);
+          return new Response("Manual sync completed successfully!", { status: 200 });
+        } catch (error) {
+          console.error("Manual sync failed:", error.stack);
+          return new Response(`Sync failed: ${error.message}`, { status: 500 });
+        }
+      }
     if (isBookingRoute) { // <--- 我們直接使用上面的判斷結果
        try {
           const bookingData = await request.json();
@@ -38,21 +65,8 @@ export default {
           });
         }
     }
-
-
-      // GET /api/sync: 手動觸發同步
-      if (pathname === '/api/sync' && request.method === 'GET') {
-        try {
-          await syncGoogleSheetToKV(env);
-          return new Response("Manual sync completed successfully!", { status: 200 });
-        } catch (error) {
-          console.error("Manual sync failed:", error.stack);
-          return new Response(`Sync failed: ${error.message}`, { status: 500 });
-        }
-      }
-
       // POST /api/bookings: 建立新訂單
-      if (pathname === '/api/bookings' && method === 'POST') {
+    if (pathname === '/api/bookings' && method === 'POST') {
          try {
             const bookingData = await request.json();
 
@@ -113,8 +127,8 @@ export default {
 
       // 如果是 /api/ 路徑但沒有匹配到任何端點，回傳 404
       return new Response(JSON.stringify({ error: 'API endpoint not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      status: 404,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
     }
 
