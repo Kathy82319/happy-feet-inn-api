@@ -118,51 +118,86 @@ function handleCorsPreflight() {
  * 【v2.0 全新同步函式】
  * 一次性讀取所有營運相關的 Google Sheet 分頁，並存入 KV。
  */
+/**
+ * 【v2.0 全新同步函式 - 偵錯版】
+ * 我們在每一步都加入了詳細的日誌，來追蹤執行過程。
+ */
 async function syncAllSheetsToKV(env) {
+  console.log("[Sync Log] Step 1: Starting syncAllSheetsToKV function.");
+
   const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+  console.log("[Sync Log] Step 2: Successfully obtained Google Auth Token.");
+
   const sheetId = env.GOOGLE_SHEET_ID;
   const ranges = ['rooms!A2:H', 'inventory_calendar!A2:D', 'pricing_rules!A2:C'];
-  
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join('&ranges=')}`;
-  
+
+  console.log("[Sync Log] Step 3: Fetching data from Google Sheets batch API.");
   const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-  if (!response.ok) throw new Error('Failed to fetch from Google Sheets');
-  
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[Sync Log] Error: Failed to fetch from Google Sheets. Status: ${response.status}. Response: ${errorText}`);
+    throw new Error('Failed to fetch from Google Sheets');
+  }
+
   const data = await response.json();
+  console.log("[Sync Log] Step 4: Successfully fetched and parsed data from Google Sheets.");
+
   const [roomsData, inventoryData, pricingData] = data.valueRanges;
 
   // 1. 處理房型資料
-  const rooms = (roomsData.values || []).map(row => ({
-    id: row[0], name: row[1], description: row[2], 
-    price: parseInt(row[3], 10) || 0,
-    weekendPrice: parseInt(row[4], 10) || null, // 新增週末價
-    totalQuantity: parseInt(row[5], 10) || 0,
-    imageUrl: row[6], isActive: (row[7] || 'FALSE').toUpperCase() === 'TRUE',
-  })).filter(room => room.id && room.isActive);
-  await env.ROOMS_KV.put('rooms_data', JSON.stringify(rooms));
+  try {
+    console.log(`[Sync Log] Step 5.1: Processing rooms data. Found ${roomsData.values ? roomsData.values.length : 0} rows.`);
+    const rooms = (roomsData.values || []).map(row => ({
+      id: row[0], name: row[1], description: row[2], 
+      price: parseInt(row[3], 10) || 0,
+      weekendPrice: row[4] ? parseInt(row[4], 10) : null,
+      totalQuantity: parseInt(row[5], 10) || 0,
+      imageUrl: row[6], 
+      isActive: (row[7] || 'FALSE').toUpperCase() === 'TRUE',
+    })).filter(room => room.id && room.isActive);
+    await env.ROOMS_KV.put('rooms_data', JSON.stringify(rooms));
+    console.log(`[Sync Log] Step 5.2: Successfully wrote ${rooms.length} rooms to KV.`);
+  } catch(e) {
+    console.error("[Sync Log] Error processing ROOMS data:", e);
+  }
 
   // 2. 處理庫存日曆
-  const inventoryCalendar = {};
-  (inventoryData.values || []).forEach(row => {
-    const [date, roomId, inventory, close] = row;
-    if (!inventoryCalendar[date]) inventoryCalendar[date] = {};
-    inventoryCalendar[date][roomId] = {
-      inventory: inventory ? parseInt(inventory, 10) : null,
-      isClosed: (close || 'FALSE').toUpperCase() === 'TRUE',
-    };
-  });
-  await env.ROOMS_KV.put('inventory_calendar', JSON.stringify(inventoryCalendar));
+  try {
+    console.log(`[Sync Log] Step 6.1: Processing inventory calendar. Found ${inventoryData.values ? inventoryData.values.length : 0} rows.`);
+    const inventoryCalendar = {};
+    (inventoryData.values || []).forEach(row => {
+      const [date, roomId, inventory, close] = row;
+      if (!date || !roomId) return; // 跳過不完整的行
+      if (!inventoryCalendar[date]) inventoryCalendar[date] = {};
+      inventoryCalendar[date][roomId] = {
+        inventory: inventory ? parseInt(inventory, 10) : null,
+        isClosed: (close || 'FALSE').toUpperCase() === 'TRUE',
+      };
+    });
+    await env.ROOMS_KV.put('inventory_calendar', JSON.stringify(inventoryCalendar));
+    console.log("[Sync Log] Step 6.2: Successfully wrote inventory calendar to KV.");
+  } catch(e) {
+    console.error("[Sync Log] Error processing INVENTORY CALENDAR data:", e);
+  }
 
   // 3. 處理特殊定價
-  const pricingRules = {};
-  (pricingData.values || []).forEach(row => {
-    const [date, roomId, price] = row;
-    if (!pricingRules[date]) pricingRules[date] = {};
-    pricingRules[date][roomId] = parseInt(price, 10);
-  });
-  await env.ROOMS_KV.put('pricing_rules', JSON.stringify(pricingRules));
+  try {
+    console.log(`[Sync Log] Step 7.1: Processing pricing rules. Found ${pricingData.values ? pricingData.values.length : 0} rows.`);
+    const pricingRules = {};
+    (pricingData.values || []).forEach(row => {
+      const [date, roomId, price] = row;
+      if (!date || !roomId || !price) return; // 跳過不完整的行
+      if (!pricingRules[date]) pricingRules[date] = {};
+      pricingRules[date][roomId] = parseInt(price, 10);
+    });
+    await env.ROOMS_KV.put('pricing_rules', JSON.stringify(pricingRules));
+    console.log("[Sync Log] Step 7.2: Successfully wrote pricing rules to KV.");
+  } catch(e) {
+    console.error("[Sync Log] Error processing PRICING RULES data:", e);
+  }
 }
-
 
 /**
  * 【v2.0 全新空房查詢函式】
