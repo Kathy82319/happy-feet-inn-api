@@ -7,19 +7,15 @@ export default {
     const pathname = url.pathname;
     const method = request.method;
 
-    // API 請求日誌
     console.log(`[Request] Method: ${method}, Path: ${pathname}`);
 
-    // API 路由器
     if (pathname.startsWith('/api/')) {
-      // CORS 預檢請求處理
       if (method === 'OPTIONS') {
         return handleCorsPreflight();
       }
- 
+
       try {
         let response;
-        // 根據路徑和方法，分派到不同的處理函式
         if (pathname === '/api/rooms' && method === 'GET') {
           response = await handleGetRooms(request, env);
         } else if (pathname === '/api/sync' && method === 'GET') {
@@ -32,7 +28,6 @@ export default {
           response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
         }
         
-        // 為所有 API 回應加上 CORS 標頭
         const newHeaders = new Headers(response.headers);
         newHeaders.set('Access-Control-Allow-Origin', '*');
         return new Response(response.body, {
@@ -49,7 +44,6 @@ export default {
       }
     }
 
-    // 前端靜態檔案伺服器
     return env.ASSETS.fetch(request);
   },
 
@@ -115,155 +109,102 @@ function handleCorsPreflight() {
 // --- 核心商業邏輯 ---
 
 /**
- * 【v2.0 全新同步函式】
- * 一次性讀取所有營運相關的 Google Sheet 分頁，並存入 KV。
- */
-/**
- * 【v2.0 全新同步函式 - 偵錯版】
- * 我們在每一步都加入了詳細的日誌，來追蹤執行過程。
+ * 【v2.1 同步函式】
+ * 更新了 rooms 分頁的讀取範圍和欄位對應。
  */
 async function syncAllSheetsToKV(env) {
-  console.log("[Sync Log] Step 1: Starting syncAllSheetsToKV function.");
-
   const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
-  console.log("[Sync Log] Step 2: Successfully obtained Google Auth Token.");
-
   const sheetId = env.GOOGLE_SHEET_ID;
-  const ranges = ['rooms!A2:H', 'inventory_calendar!A2:D', 'pricing_rules!A2:C'];
+  // 【關鍵修正】讀取範圍擴大到 I 欄
+  const ranges = ['rooms!A2:I', 'inventory_calendar!A2:D', 'pricing_rules!A2:C'];
+  
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join('&ranges=')}`;
-
-  console.log("[Sync Log] Step 3: Fetching data from Google Sheets batch API.");
+  
   const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[Sync Log] Error: Failed to fetch from Google Sheets. Status: ${response.status}. Response: ${errorText}`);
-    throw new Error('Failed to fetch from Google Sheets');
-  }
-
+  if (!response.ok) throw new Error('Failed to fetch from Google Sheets');
+  
   const data = await response.json();
-  console.log("[Sync Log] Step 4: Successfully fetched and parsed data from Google Sheets.");
-
   const [roomsData, inventoryData, pricingData] = data.valueRanges;
 
   // 1. 處理房型資料
-  try {
-    console.log(`[Sync Log] Step 5.1: Processing rooms data. Found ${roomsData.values ? roomsData.values.length : 0} rows.`);
-    const rooms = (roomsData.values || []).map(row => ({
-      id: row[0], name: row[1], description: row[2], 
-      price: parseInt(row[3], 10) || 0,
-      weekendPrice: row[4] ? parseInt(row[4], 10) : null,
-      totalQuantity: parseInt(row[5], 10) || 0,
-      imageUrl: row[6], 
-      isActive: (row[7] || 'FALSE').toUpperCase() === 'TRUE',
-    })).filter(room => room.id && room.isActive);
-    await env.ROOMS_KV.put('rooms_data', JSON.stringify(rooms));
-    console.log(`[Sync Log] Step 5.2: Successfully wrote ${rooms.length} rooms to KV.`);
-  } catch(e) {
-    console.error("[Sync Log] Error processing ROOMS data:", e);
-  }
+  const rooms = (roomsData.values || []).map(row => ({
+    // 【關鍵修正】完全對應你的新欄位順序
+    id: row[0],
+    name: row[1],
+    description: row[2], 
+    price: parseInt(row[3], 10) || 0,
+    fridayPrice: row[4] ? parseInt(row[4], 10) : null,
+    saturdayPrice: row[5] ? parseInt(row[5], 10) : null,
+    totalQuantity: parseInt(row[6], 10) || 0,
+    imageUrl: row[7],
+    isActive: (row[8] || 'FALSE').toUpperCase() === 'TRUE',
+  })).filter(room => room.id && room.isActive);
+  await env.ROOMS_KV.put('rooms_data', JSON.stringify(rooms));
 
-  // 2. 處理庫存日曆
-  try {
-    console.log(`[Sync Log] Step 6.1: Processing inventory calendar. Found ${inventoryData.values ? inventoryData.values.length : 0} rows.`);
-    const inventoryCalendar = {};
-    (inventoryData.values || []).forEach(row => {
-      const [date, roomId, inventory, close] = row;
-      if (!date || !roomId) return; // 跳過不完整的行
-      if (!inventoryCalendar[date]) inventoryCalendar[date] = {};
-      inventoryCalendar[date][roomId] = {
-        inventory: inventory ? parseInt(inventory, 10) : null,
-        isClosed: (close || 'FALSE').toUpperCase() === 'TRUE',
-      };
-    });
-    await env.ROOMS_KV.put('inventory_calendar', JSON.stringify(inventoryCalendar));
-    console.log("[Sync Log] Step 6.2: Successfully wrote inventory calendar to KV.");
-  } catch(e) {
-    console.error("[Sync Log] Error processing INVENTORY CALENDAR data:", e);
-  }
+  // 2. 處理庫存日曆 (邏輯不變)
+  const inventoryCalendar = {};
+  (inventoryData.values || []).forEach(row => {
+    const [date, roomId, inventory, close] = row;
+    if (!date || !roomId) return;
+    if (!inventoryCalendar[date]) inventoryCalendar[date] = {};
+    inventoryCalendar[date][roomId] = {
+      inventory: inventory ? parseInt(inventory, 10) : null,
+      isClosed: (close || 'FALSE').toUpperCase() === 'TRUE',
+    };
+  });
+  await env.ROOMS_KV.put('inventory_calendar', JSON.stringify(inventoryCalendar));
 
-  // 3. 處理特殊定價
-  try {
-    console.log(`[Sync Log] Step 7.1: Processing pricing rules. Found ${pricingData.values ? pricingData.values.length : 0} rows.`);
-    const pricingRules = {};
-    (pricingData.values || []).forEach(row => {
-      const [date, roomId, price] = row;
-      if (!date || !roomId || !price) return; // 跳過不完整的行
-      if (!pricingRules[date]) pricingRules[date] = {};
-      pricingRules[date][roomId] = parseInt(price, 10);
-    });
-    await env.ROOMS_KV.put('pricing_rules', JSON.stringify(pricingRules));
-    console.log("[Sync Log] Step 7.2: Successfully wrote pricing rules to KV.");
-  } catch(e) {
-    console.error("[Sync Log] Error processing PRICING RULES data:", e);
-  }
+  // 3. 處理特殊定價 (邏輯不變)
+  const pricingRules = {};
+  (pricingData.values || []).forEach(row => {
+    const [date, roomId, price] = row;
+    if (!date || !roomId || !price) return;
+    if (!pricingRules[date]) pricingRules[date] = {};
+    pricingRules[date][roomId] = parseInt(price, 10);
+  });
+  await env.ROOMS_KV.put('pricing_rules', JSON.stringify(pricingRules));
 }
 
 /**
- * 【v2.0 全新空房查詢函式】
- * 整合了手動關房與庫存控制的邏輯。
+ * 【v2.1 價格計算函式】
+ * 升級為三層式定價：特殊日 > 週五/週六 > 平日
  */
-async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
-  // 1. 從 KV 讀取必要的營運資料
-  const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
-  const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
-  
-  const targetRoom = allRooms.find(room => room.id === roomId);
-  if (!targetRoom) return { error: 'Room not found', availableCount: 0 };
-  
-  // 2. 從 Google Sheet 讀取即時的訂單資料
-  const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
-  const sheetId = env.GOOGLE_SHEET_ID;
-  const range = 'bookings!A2:K';
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
-  const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-  if (!response.ok) throw new Error('Failed to fetch bookings');
-  const sheetData = await response.json();
-  const bookings = (sheetData.values || []).map(row => ({
-    roomId: row[4], checkInDate: row[5], checkOutDate: row[6], status: row[10]
-  }));
+async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
+    const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
+    const pricingRules = await env.ROOMS_KV.get('pricing_rules', 'json') || {};
 
-  // 3. 核心演算法：計算每日剩餘數量
-  let minAvailableCount = Infinity;
-  const startDate = new Date(startDateStr);
-  const endDate = new Date(endDateStr);
+    const targetRoom = allRooms.find(room => room.id === roomId);
+    if (!targetRoom) throw new Error('Room not found for price calculation.');
 
-  let currentDate = new Date(startDate);
-  while (currentDate < endDate) {
-    const dateString = currentDate.toISOString().split('T')[0];
-    const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
+    let totalPrice = 0;
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
 
-    // 優先權 1: 強制關房
-    if (dayOverrides && dayOverrides.isClosed) {
-      minAvailableCount = 0;
-      break; 
+    let currentDate = new Date(startDate);
+    while (currentDate < endDate) {
+        const dateString = currentDate.toISOString().split('T')[0];
+        const dayOfWeek = currentDate.getDay(); // 0=週日, 5=週五, 6=週六
+
+        let dailyPrice = targetRoom.price; // 預設：平日價
+
+        // 【關鍵修正】次高優先權：週五價 & 週六價
+        if (dayOfWeek === 5 && targetRoom.fridayPrice) { // 如果是週五且有設定週五價
+            dailyPrice = targetRoom.fridayPrice;
+        } else if (dayOfWeek === 6 && targetRoom.saturdayPrice) { // 如果是週六且有設定週六價
+            dailyPrice = targetRoom.saturdayPrice;
+        }
+
+        // 最高優先權：特殊定價
+        if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
+            dailyPrice = pricingRules[dateString][roomId];
+        }
+
+        totalPrice += dailyPrice;
+        currentDate.setDate(currentDate.getDate() + 1);
     }
-
-    // 優先權 2: 手動設定的庫存
-    let dayTotalQuantity = targetRoom.totalQuantity;
-    if (dayOverrides && dayOverrides.inventory !== null) {
-      dayTotalQuantity = dayOverrides.inventory;
-    }
-
-    // 計算當日已預訂數量
-    const occupiedCount = bookings.filter(b => {
-      const checkIn = new Date(b.checkInDate);
-      const checkOut = new Date(b.checkOutDate);
-      return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
-    }).length;
-
-    const available = dayTotalQuantity - occupiedCount;
-    if (available < minAvailableCount) {
-      minAvailableCount = available;
-    }
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-
-  return {
-    roomId, startDate: startDateStr, endDate: endDateStr,
-    availableCount: Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount),
-  };
+    return totalPrice;
 }
+
 
 
 /**
@@ -303,45 +244,6 @@ async function writeBookingToSheet(env, booking) {
   });
   if (!response.ok) throw new Error('Failed to write booking to Google Sheets');
   return bookingId;
-}
-
-
-/**
- * 【v2.0 全新價格計算函式】
- * 由後端根據多層次規則計算總價。
- */
-async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
-    const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
-    const pricingRules = await env.ROOMS_KV.get('pricing_rules', 'json') || {};
-
-    const targetRoom = allRooms.find(room => room.id === roomId);
-    if (!targetRoom) throw new Error('Room not found for price calculation.');
-
-    let totalPrice = 0;
-    const startDate = new Date(startDateStr);
-    const endDate = new Date(endDateStr);
-
-    let currentDate = new Date(startDate);
-    while (currentDate < endDate) {
-        const dateString = currentDate.toISOString().split('T')[0];
-        const dayOfWeek = currentDate.getDay(); // 0=週日, 5=週五, 6=週六
-
-        let dailyPrice = targetRoom.price; // 預設價格
-
-        // 優先權 2: 週末價
-        if (targetRoom.weekendPrice && (dayOfWeek === 5 || dayOfWeek === 6)) {
-            dailyPrice = targetRoom.weekendPrice;
-        }
-
-        // 優先權 1: 特殊定價
-        if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
-            dailyPrice = pricingRules[dateString][roomId];
-        }
-
-        totalPrice += dailyPrice;
-        currentDate.setDate(currentDate.getDate() + 1);
-    }
-    return totalPrice;
 }
 
 
