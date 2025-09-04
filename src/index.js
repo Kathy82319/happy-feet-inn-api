@@ -1,11 +1,6 @@
 import { SignJWT } from 'jose';
 
 export default {
-  /**
-   * 【重大升級】
-   * 新的 fetch 函式現在是一個路由器 (Router)。
-   * 它會判斷請求的類型，決定是執行 API 邏輯，還是回傳前端靜態檔案。
-   */
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = url.pathname;
@@ -54,6 +49,38 @@ export default {
               },
           });
       }
+            
+      // 【全新功能】GET /api/availability: 查詢空房狀態
+      if (pathname === '/api/availability' && request.method === 'GET') {
+        try {
+          // 從網址的查詢參數中取得房型 ID 和日期
+          const roomId = url.searchParams.get('roomId');
+          const startDate = url.searchParams.get('startDate');
+          const endDate = url.searchParams.get('endDate');
+
+          if (!roomId || !startDate || !endDate) {
+            return new Response(JSON.stringify({ error: 'Missing required query parameters: roomId, startDate, endDate' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+
+          // 執行查詢空房的核心任務
+          const availability = await getAvailabilityForRoom(env, roomId, startDate, endDate);
+          
+          return new Response(JSON.stringify(availability), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+
+        } catch (error) {
+          console.error("Availability check failed:", error.stack);
+          return new Response(JSON.stringify({ error: `Availability check failed: ${error.message}` }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+      }
 
       // 如果是 /api/ 路徑但沒有匹配到任何端點，回傳 404
       return new Response(JSON.stringify({ error: 'API endpoint not found' }), {
@@ -79,7 +106,6 @@ export default {
     }
   },
 };
-
 
 // --- 【全新函式】將訂單資料寫入 Google Sheet ---
 async function writeBookingToSheet(env, booking) {
@@ -127,6 +153,96 @@ async function writeBookingToSheet(env, booking) {
 
   return bookingId; // 將新的訂單 ID 回傳
 }
+
+
+// --- 【全新函式】查詢指定房型在特定日期區間的空房狀況 ---
+async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
+  // 1. 取得所有房型的資料，並找出目標房型的總房間數
+  const allRooms = await env.ROOMS_KV.get('all_rooms', 'json');
+  if (!allRooms) {
+    throw new Error('Rooms data not available in KV store.');
+  }
+  const targetRoom = allRooms.find(room => room.id === roomId);
+  if (!targetRoom) {
+    return { error: 'Room not found', availableCount: 0 };
+  }
+  const totalQuantity = targetRoom.totalQuantity;
+
+  // 2. 獲取 Google API 存取令牌
+  const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+  const sheetId = env.GOOGLE_SHEET_ID;
+  
+  // 3. 讀取 `bookings` 分頁中的所有訂單紀錄
+  const range = 'bookings!A2:K'; // 從 A2 開始讀取，撈取所有訂單
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+  const response = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Google Sheets API read error: ${JSON.stringify(errorData)}`);
+  }
+  const sheetData = await response.json();
+  const bookings = (sheetData.values || []).map(row => ({
+    // 根據 bookings 分頁的欄位順序解析
+    bookingId: row[0],
+    timestamp: row[1],
+    lineUserId: row[2],
+    lineDisplayName: row[3],
+    roomId: row[4],
+    checkInDate: row[5],
+    checkOutDate: row[6],
+    status: row[10] // 我們只關心狀態
+  }));
+  
+  // 4. 核心演算法：計算指定日期範圍內，每天被佔用的房間數
+  const occupiedCounts = {}; // 用來記錄每天被佔用的數量
+  const startDate = new Date(startDateStr);
+  const endDate = new Date(endDateStr);
+
+  // 遍歷每一筆已存在的訂單
+  for (const booking of bookings) {
+    // 只計算與我們要查詢的房型相同，且訂單狀態不是 CANCELLED 的訂單
+    if (booking.roomId === roomId && booking.status !== 'CANCELLED') {
+      const bookingCheckIn = new Date(booking.checkInDate);
+      const bookingCheckOut = new Date(booking.checkOutDate);
+
+      // 遍歷我們要查詢的日期範圍 (從入住日到退房前一天)
+      let currentDate = new Date(startDate);
+      while (currentDate < endDate) {
+        const dateString = currentDate.toISOString().split('T')[0]; // 格式化為 YYYY-MM-DD
+
+        // 判斷 currentDate 是否落在該筆訂單的住宿期間內
+        if (currentDate >= bookingCheckIn && currentDate < bookingCheckOut) {
+          occupiedCounts[dateString] = (occupiedCounts[dateString] || 0) + 1;
+        }
+        
+        currentDate.setDate(currentDate.getDate() + 1); // 前進到下一天
+      }
+    }
+  }
+
+  // 5. 找出這段期間內，剩餘房間數最少的那一天
+  let minAvailableCount = totalQuantity;
+  let currentDate = new Date(startDate);
+  while (currentDate < endDate) {
+      const dateString = currentDate.toISOString().split('T')[0];
+      const occupied = occupiedCounts[dateString] || 0;
+      const available = totalQuantity - occupied;
+      if (available < minAvailableCount) {
+          minAvailableCount = available;
+      }
+      currentDate.setDate(currentDate.getDate() + 1);
+  }
+  
+  return {
+    roomId: roomId,
+    startDate: startDateStr,
+    endDate: endDateStr,
+    availableCount: minAvailableCount > 0 ? minAvailableCount : 0, // 確保回傳值不為負數
+  };
+}
+
 
 
 async function syncGoogleSheetToKV(env) {
