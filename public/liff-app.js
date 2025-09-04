@@ -153,16 +153,19 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log("Received event object (e):", e);
     console.log("Received event detail (e.detail):", e.detail);
 
-    // --- 原本的守衛檢查哨 ---
-    if (!e.detail || !e.detail.dates || e.detail.dates.length < 2) {
+      // 【關鍵修正】將所有 e.detail.dates 改為 e.detail.date (單數)
+    if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
         console.log("Guard clause triggered: Not a full date range yet. Exiting function.");
         priceCalculationEl.textContent = '';
         submitBookingButton.disabled = true;
         return;
     }
 
-    // --- 原本的後續邏輯 (保持不變) ---
-    const dates = e.detail.dates.map(date => formatDate(date));
+    // 【關鍵修正】從 e.detail.date 取出日期物件
+    const dateObjects = e.detail.date;
+
+    // 將日期物件轉換成 "YYYY-MM-DD" 格式的字串
+    const dates = dateObjects.map(date => formatDate(date));
 
     const [startDate, endDate] = dates;
     availabilityResultEl.textContent = '正在查詢空房...';
@@ -177,10 +180,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.availableCount > 0) {
             availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${data.availableCount} 間空房。`;
             submitBookingButton.disabled = false;
+            calculatePrice(startDate, endDate);
         } else {
             availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
         }
-        calculatePrice(startDate, endDate); // 移到這裡，確保查詢成功後才計算
     } catch (error) {
         availabilityResultEl.textContent = '✗ 查詢空房失敗，請稍後再試。';
         console.error("Availability check failed:", error);
