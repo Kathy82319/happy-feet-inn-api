@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- 【重要設定】請務必填寫你自己的資料 ---
-    const LIFF_ID = "請在這裡貼上你自己的LIFF_ID"; 
+    const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     // --- 全域變數 ---
