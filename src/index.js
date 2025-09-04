@@ -4,7 +4,8 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = url.pathname;
-
+    const method = request.method;
+   console.log(`[Backend Request Log] Method: ${method}, Path: ${pathname}`);
     // --- API 路由器 ---
     // 如果請求的路徑是以 /api/ 開頭，就進入後端 API 處理邏輯
     if (pathname.startsWith('/api/')) {
@@ -35,19 +36,31 @@ export default {
       }
 
       // POST /api/bookings: 建立新訂單
-      if (pathname === '/api/bookings' && request.method === 'POST') {
-        // ... (POST /api/bookings 的程式碼保持不變) ...
-      }
+      if (pathname === '/api/bookings' && method === 'POST') {
+         try {
+            const bookingData = await request.json();
 
-      // 處理 API 的 CORS OPTIONS 請求
-      if (request.method === 'OPTIONS') {
-          return new Response(null, {
-              headers: {
-                  'Access-Control-Allow-Origin': '*',
-                  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                  'Access-Control-Allow-Headers': 'Content-Type',
-              },
-          });
+            if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
+              return new Response(JSON.stringify({ error: 'Missing required booking data.' }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+              });
+            }
+
+            const newBookingId = await writeBookingToSheet(env, bookingData);
+
+            return new Response(JSON.stringify({ success: true, bookingId: newBookingId }), {
+              status: 201,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+
+          } catch (error) {
+            console.error("Booking creation failed:", error.stack);
+            return new Response(JSON.stringify({ error: `Booking creation failed: ${error.message}` }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
       }
             
       // 【全新功能】GET /api/availability: 查詢空房狀態
