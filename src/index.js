@@ -16,7 +16,7 @@ export default {
     const method = request.method;
 
     console.log(`[Request] Method: ${method}, Path: ${pathname}`);
-
+ 
     if (pathname.startsWith('/api/')) {
       if (method === 'OPTIONS') return handleCorsPreflight();
 
