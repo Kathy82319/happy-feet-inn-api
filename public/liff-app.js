@@ -4,9 +4,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     // --- 全域變數 ---
-    let lineProfile = {}; // 存放使用者 LINE 資料
-    let selectedRoom = {}; // 存放當前選擇的房型
-    let datepicker; // 存放日曆實體
+    let lineProfile = {};
+    let selectedRoom = {};
+    let datepicker;
 
     // --- 頁面元素 ---
     const loadingSpinner = document.getElementById('loading-spinner');
@@ -15,8 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const userPictureImg = document.getElementById('user-picture');
     const mainContent = document.getElementById('main-content');
     const roomListDiv = document.getElementById('room-list');
-    
-    // 訂房彈出視窗 (Modal) 的所有元素
     const bookingModal = document.getElementById('booking-modal');
     const modalRoomName = document.getElementById('modal-room-name');
     const dateRangePickerEl = document.getElementById('date-range-picker');
@@ -30,16 +28,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 主流程 ---
     function main() {
-        // 1. 初始化 LIFF
         liff.init({ liffId: LIFF_ID })
             .then(() => {
-                // 2. 檢查登入狀態
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                } else {
-                    // 3. 取得使用者資料
-                    getUserProfile();
-                }
+                if (!liff.isLoggedIn()) liff.login();
+                else getUserProfile();
             })
             .catch(err => {
                 console.error("LIFF Initialization failed", err);
@@ -53,14 +45,9 @@ document.addEventListener('DOMContentLoaded', () => {
             userNameSpan.textContent = profile.displayName;
             userPictureImg.src = profile.pictureUrl;
             userProfileDiv.classList.remove('hidden');
-            guestNameInput.value = profile.displayName; // 自動將 LINE 名字填入訂房大名
-            
-            // 4. 取得房型列表
+            guestNameInput.value = profile.displayName;
             fetchRooms();
-        }).catch(err => {
-            console.error("Get profile failed", err);
-            alert("無法取得您的 LINE 資料，請允許相關權限後再試。");
-        });
+        }).catch(err => console.error("Get profile failed", err));
     }
 
     function fetchRooms() {
@@ -73,22 +60,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 return response.json();
             })
             .then(rooms => {
-                roomListDiv.innerHTML = ''; // 清空舊內容
+                roomListDiv.innerHTML = '';
                 if (rooms.length === 0) {
                     roomListDiv.innerHTML = '<p>目前沒有可預訂的房型。</p>';
                 } else {
-                    rooms.forEach(room => {
-                        const card = createRoomCard(room);
-                        roomListDiv.appendChild(card);
-                    });
+                    rooms.forEach(room => roomListDiv.appendChild(createRoomCard(room)));
                 }
                 loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
             })
             .catch(error => {
                 console.error('Fetching rooms failed:', error);
-                loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
+                loadingSpinner.classList.add('hidden');
                 roomListDiv.innerHTML = '<p>載入房型資料失敗，請稍後再試。</p>';
             });
     }
@@ -105,9 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="cta-button">立即預訂</button>
             </div>
         `;
-        card.querySelector('.cta-button').addEventListener('click', () => {
-            openBookingModal(room);
-        });
+        card.querySelector('.cta-button').addEventListener('click', () => openBookingModal(room));
         return card;
     }
 
@@ -121,7 +103,6 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBookingButton.disabled = true;
         submitBookingButton.textContent = '確認訂房';
         guestPhoneInput.value = '';
-
         initializeDatepicker();
         bookingModal.classList.remove('hidden');
     }
@@ -135,46 +116,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function initializeDatepicker() {
-    if (datepicker) {
-        datepicker.destroy();
+        if (datepicker) datepicker.destroy();
+
+        // 【關鍵修正】直接從 window 物件取得 Datepicker 的建構函式
+        const Datepicker = window.Datepicker;
+        if (!Datepicker) {
+            console.error("Datepicker library not loaded!");
+            return;
+        }
+
+        datepicker = new Datepicker(dateRangePickerEl, {
+            language: 'zh-TW',
+            format: 'yyyy-mm-dd',
+            autohide: true,
+            todayHighlight: true,
+            minDate: new Date(),
+            maxNumberOfDates: 2,
+            buttonClass: 'btn',
+        });
+
+        dateRangePickerEl.addEventListener('changeDate', handleDateChange);
     }
-
-    // 【關鍵修正】直接使用從 CDN 引入的全域變數 Datepicker
-    // 確保 window.Datepicker 這個物件存在
-    if (!window.Datepicker) {
-        console.error("Datepicker library not loaded!");
-        availabilityResultEl.textContent = '錯誤：日曆元件載入失敗。';
-        return;
-    }
-
-    const Datepicker = window.Datepicker;
-    datepicker = new Datepicker(dateRangePickerEl, {
-        language: 'zh-TW',
-        format: 'yyyy-mm-dd',
-        autohide: true,
-        todayHighlight: true,
-        minDate: new Date(),
-        maxNumberOfDates: 2, // 啟用日期範圍選擇
-        buttonClass: 'btn',
-    });
-
-    dateRangePickerEl.addEventListener('changeDate', handleDateChange);
-}
 
     async function handleDateChange() {
+        // 【關鍵修正】直接使用 datepicker.getDates() 即可
         const dates = datepicker.getDates('yyyy-mm-dd');
         priceCalculationEl.textContent = '';
         submitBookingButton.disabled = true;
 
         if (dates.length < 2) return;
-        
+
         const [startDate, endDate] = dates;
         availabilityResultEl.textContent = '正在查詢空房...';
 
         try {
             const response = await fetch(`${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`);
             if (!response.ok) throw new Error('查詢空房請求失敗');
-            
+
             const data = await response.json();
             if (data.error) throw new Error(data.error);
 
@@ -198,8 +176,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (nights > 0) {
             const totalPrice = nights * selectedRoom.price;
             priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${totalPrice}`;
-        } else {
-            priceCalculationEl.textContent = '';
         }
     }
 
@@ -212,7 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         submitBookingButton.disabled = true;
         submitBookingButton.textContent = '正在為您處理...';
-        
+
         const [startDate, endDate] = dates;
         const nights = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
 
@@ -226,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             guestPhone: guestPhoneInput.value,
             totalPrice: nights * selectedRoom.price,
         };
-        
+
         try {
             const response = await fetch(`${API_BASE_URL}/api/bookings`, {
                 method: 'POST',
