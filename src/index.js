@@ -166,10 +166,10 @@ async function syncAllSheetsToKV(env) {
 }
 
 /**
- * 【v2.1 價格計算函式】
- * 升級為三層式定價：特殊日 > 週五/週六 > 平日
+ * 【v2.1 偵錯版】價格計算函式
  */
 async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
+    console.log(`\n--- [Price Calculation] Room: ${roomId}, From: ${startDateStr}, To: ${endDateStr} ---`);
     const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
     const pricingRules = await env.ROOMS_KV.get('pricing_rules', 'json') || {};
 
@@ -182,26 +182,30 @@ async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
 
     let currentDate = new Date(startDate);
     while (currentDate < endDate) {
-        const dateString = currentDate.toISOString().split('T')[0];
-        const dayOfWeek = currentDate.getDay(); // 0=週日, 5=週五, 6=週六
+        const dateString = formatDate(currentDate);
+        const dayOfWeek = currentDate.getDay(); // 0=Sun, 5=Fri, 6=Sat
+        
+        let dailyPrice = targetRoom.price;
+        console.log(`\n[PRICE-LOG] Checking date: ${dateString} (Day of week: ${dayOfWeek})`);
+        console.log(`[PRICE-LOG] Base price: ${dailyPrice}`);
 
-        let dailyPrice = targetRoom.price; // 預設：平日價
-
-        // 【關鍵修正】次高優先權：週五價 & 週六價
-        if (dayOfWeek === 5 && targetRoom.fridayPrice) { // 如果是週五且有設定週五價
+        if (dayOfWeek === 5 && targetRoom.fridayPrice) {
             dailyPrice = targetRoom.fridayPrice;
-        } else if (dayOfWeek === 6 && targetRoom.saturdayPrice) { // 如果是週六且有設定週六價
+            console.log(`[PRICE-LOG] Friday price applied: ${dailyPrice}`);
+        } else if (dayOfWeek === 6 && targetRoom.saturdayPrice) {
             dailyPrice = targetRoom.saturdayPrice;
+            console.log(`[PRICE-LOG] Saturday price applied: ${dailyPrice}`);
         }
 
-        // 最高優先權：特殊定價
         if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
             dailyPrice = pricingRules[dateString][roomId];
+            console.log(`[PRICE-LOG] Special price rule applied: ${dailyPrice}`);
         }
 
         totalPrice += dailyPrice;
         currentDate.setDate(currentDate.getDate() + 1);
     }
+    console.log(`--- [Price Result] Final total price: ${totalPrice} ---`);
     return totalPrice;
 }
 
@@ -247,7 +251,26 @@ async function writeBookingToSheet(env, booking) {
 }
 
 
-// 請找到檔案底部的輔助函式區塊，並用下面這兩個新版本替換它們
+// --- 新增的輔助函式 ---
+async function fetchAllBookings(env) {
+    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+    const sheetId = env.GOOGLE_SHEET_ID;
+    const range = 'bookings!A2:K';
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) throw new Error('Failed to fetch bookings from Google Sheet');
+    const sheetData = await response.json();
+    return (sheetData.values || []).map(row => ({
+        roomId: row[4], checkInDate: row[5], checkOutDate: row[6], status: row[10]
+    }));
+}
+function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 
 /**
  * 輔助函式：將 PEM 格式的金鑰字串，轉換為加密函式庫所需的 ArrayBuffer 格式
@@ -329,67 +352,70 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
 }
 
 /**
- * 【v2.1 全新空房查詢函式】
- * 整合了手動關房與庫存控制的邏輯。
+ * 【v2.1 偵錯版】空房查詢函式
  */
 async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
-  // 1. 從 KV 讀取必要的營運資料
+  console.log(`\n--- [Availability Check] Room: ${roomId}, From: ${startDateStr}, To: ${endDateStr} ---`);
+  
   const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
   const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
-
+  
   const targetRoom = allRooms.find(room => room.id === roomId);
-  if (!targetRoom) return { error: 'Room not found', availableCount: 0 };
-
-  // 2. 從 Google Sheet 讀取即時的訂單資料
-  const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
-  const sheetId = env.GOOGLE_SHEET_ID;
-  const range = 'bookings!A2:K';
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
-  const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-  if (!response.ok) throw new Error('Failed to fetch bookings');
-  const sheetData = await response.json();
-  const bookings = (sheetData.values || []).map(row => ({
-    roomId: row[4], checkInDate: row[5], checkOutDate: row[6], status: row[10]
-  }));
-
-  // 3. 核心演算法：計算每日剩餘數量
+  if (!targetRoom) {
+    console.log("[AV-LOG] Room not found in KV.");
+    return { error: 'Room not found', availableCount: 0 };
+  }
+  console.log(`[AV-LOG] Target room found. Total base quantity: ${targetRoom.totalQuantity}`);
+  
+  const bookings = await fetchAllBookings(env);
+  
   let minAvailableCount = Infinity;
   const startDate = new Date(startDateStr);
   const endDate = new Date(endDateStr);
 
   let currentDate = new Date(startDate);
   while (currentDate < endDate) {
-    const dateString = currentDate.toISOString().split('T')[0];
+    const dateString = formatDate(currentDate);
+    console.log(`\n[AV-LOG] Checking date: ${dateString}`);
     const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
 
-    // 優先權 1: 強制關房
+    if (dayOverrides) {
+        console.log(`[AV-LOG] Found override for this date:`, dayOverrides);
+    }
+
     if (dayOverrides && dayOverrides.isClosed) {
+      console.log(`[AV-LOG] Room is CLOSED on this date.`);
       minAvailableCount = 0;
       break; 
     }
 
-    // 優先權 2: 手動設定的庫存
     let dayTotalQuantity = targetRoom.totalQuantity;
     if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
       dayTotalQuantity = dayOverrides.inventory;
+      console.log(`[AV-LOG] Manual inventory applied. New total quantity: ${dayTotalQuantity}`);
     }
 
-    // 計算當日已預訂數量
     const occupiedCount = bookings.filter(b => {
       const checkIn = new Date(b.checkInDate);
       const checkOut = new Date(b.checkOutDate);
       return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
     }).length;
+    console.log(`[AV-LOG] Occupied rooms on this date: ${occupiedCount}`);
 
     const available = dayTotalQuantity - occupiedCount;
+    console.log(`[AV-LOG] Available rooms on this date: ${available}`);
+
     if (available < minAvailableCount) {
       minAvailableCount = available;
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
-
+  
+  const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
+  console.log(`--- [Availability Result] Final minimum available count: ${finalCount} ---`);
+  
   return {
     roomId, startDate: startDateStr, endDate: endDateStr,
-    availableCount: Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount),
+    availableCount: finalCount,
   };
 }
