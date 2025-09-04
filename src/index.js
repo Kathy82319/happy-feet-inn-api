@@ -10,19 +10,35 @@ export default {
     // 如果請求的路徑是以 /api/ 開頭，就進入後端 API 處理邏輯
     if (pathname.startsWith('/api/')) {
 
-      // GET /api/rooms: 取得房型列表
-      if (pathname === '/api/rooms' && request.method === 'GET') {
-        const roomsData = await env.ROOMS_KV.get('all_rooms', 'json');
-        if (!roomsData) {
-          return new Response(JSON.stringify({ error: 'Rooms data not found.' }), {
-            status: 404,
+       // --- 【新增的、最終的診斷日誌】 ---
+       // 讓程式親口告訴我們，它對 booking 路由的判斷結果是什麼
+    if (isBookingRoute) { // <--- 我們直接使用上面的判斷結果
+       try {
+          const bookingData = await request.json();
+
+          if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
+            return new Response(JSON.stringify({ error: 'Missing required booking data.' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+
+          const newBookingId = await writeBookingToSheet(env, bookingData);
+
+          return new Response(JSON.stringify({ success: true, bookingId: newBookingId }), {
+            status: 201,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+
+        } catch (error) {
+          console.error("Booking creation failed:", error.stack);
+          return new Response(JSON.stringify({ error: `Booking creation failed: ${error.message}` }), {
+            status: 500,
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
           });
         }
-        return new Response(JSON.stringify(roomsData), {
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        });
-      }
+    }
+
 
       // GET /api/sync: 手動觸發同步
       if (pathname === '/api/sync' && request.method === 'GET') {
