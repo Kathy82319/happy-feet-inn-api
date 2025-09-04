@@ -16,7 +16,7 @@ export default {
       if (method === 'OPTIONS') {
         return handleCorsPreflight();
       }
-
+ 
       try {
         let response;
         // 根據路徑和方法，分派到不同的處理函式
