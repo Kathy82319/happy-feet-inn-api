@@ -26,6 +26,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const bookingErrorEl = document.getElementById('booking-error');
     const closeButton = document.querySelector('.close-button');
 
+    //輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
+    function formatDate(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+    }
+
     // --- 主流程 ---
     function main() {
         liff.init({ liffId: LIFF_ID })
@@ -138,36 +146,45 @@ document.addEventListener('DOMContentLoaded', () => {
         dateRangePickerEl.addEventListener('changeDate', handleDateChange);
     }
 
-    async function handleDateChange() {
-        // 【關鍵修正】直接使用 datepicker.getDates() 即可
-        const dates = datepicker.getDates('yyyy-mm-dd');
-        priceCalculationEl.textContent = '';
-        submitBookingButton.disabled = true;
-
-        if (dates.length < 2) return;
-
-        const [startDate, endDate] = dates;
-        availabilityResultEl.textContent = '正在查詢空房...';
-
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`);
-            if (!response.ok) throw new Error('查詢空房請求失敗');
-
-            const data = await response.json();
-            if (data.error) throw new Error(data.error);
-
-            if (data.availableCount > 0) {
-                availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${data.availableCount} 間空房。`;
-                submitBookingButton.disabled = false;
-                calculatePrice(startDate, endDate);
-            } else {
-                availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
-            }
-        } catch (error) {
-            availabilityResultEl.textContent = '✗ 查詢空房失敗，請稍後再試。';
-            console.error("Availability check failed:", error);
-        }
+    async function handleDateChange(e) {
+    // 【關鍵修正】日期要從事件物件 e.detail.dates 中取得
+    if (!e.detail || !e.detail.dates) {
+        return;
     }
+
+    const dateObjects = e.detail.dates;
+    priceCalculationEl.textContent = '';
+    submitBookingButton.disabled = true;
+
+    if (dateObjects.length < 2) {
+        return;
+    }
+
+    // 將日期物件轉換成 "YYYY-MM-DD" 格式的字串
+    const dates = dateObjects.map(date => formatDate(date));
+
+    const [startDate, endDate] = dates;
+    availabilityResultEl.textContent = '正在查詢空房...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`);
+        if (!response.ok) throw new Error('查詢空房請求失敗');
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+
+        if (data.availableCount > 0) {
+            availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${data.availableCount} 間空房。`;
+            submitBookingButton.disabled = false; // 啟用按鈕！
+            calculatePrice(startDate, endDate);
+        } else {
+            availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
+        }
+    } catch (error) {
+        availabilityResultEl.textContent = '✗ 查詢空房失敗，請稍後再試。';
+        console.error("Availability check failed:", error);
+    }
+}
 
     function calculatePrice(startDate, endDate) {
         const start = new Date(startDate);
