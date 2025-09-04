@@ -135,21 +135,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function initializeDatepicker() {
-        if (datepicker) datepicker.destroy();
-        
-        const { Datepicker } = window.datepicker;
-        datepicker = new Datepicker(dateRangePickerEl, {
-            language: 'zh-TW',
-            format: 'yyyy-mm-dd',
-            autohide: true,
-            todayHighlight: true,
-            minDate: new Date(),
-            maxNumberOfDates: 2, // 啟用日期範圍選擇
-            buttonClass: 'btn',
-        });
-
-        dateRangePickerEl.addEventListener('changeDate', handleDateChange);
+    if (datepicker) {
+        datepicker.destroy();
     }
+
+    // 【關鍵修正】直接使用從 CDN 引入的全域變數 Datepicker
+    // 確保 window.Datepicker 這個物件存在
+    if (!window.Datepicker) {
+        console.error("Datepicker library not loaded!");
+        availabilityResultEl.textContent = '錯誤：日曆元件載入失敗。';
+        return;
+    }
+
+    const Datepicker = window.Datepicker;
+    datepicker = new Datepicker(dateRangePickerEl, {
+        language: 'zh-TW',
+        format: 'yyyy-mm-dd',
+        autohide: true,
+        todayHighlight: true,
+        minDate: new Date(),
+        maxNumberOfDates: 2, // 啟用日期範圍選擇
+        buttonClass: 'btn',
+    });
+
+    dateRangePickerEl.addEventListener('changeDate', handleDateChange);
+}
 
     async function handleDateChange() {
         const dates = datepicker.getDates('yyyy-mm-dd');
