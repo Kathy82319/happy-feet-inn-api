@@ -327,3 +327,69 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
 
   return tokens.access_token;
 }
+
+/**
+ * 【v2.1 全新空房查詢函式】
+ * 整合了手動關房與庫存控制的邏輯。
+ */
+async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
+  // 1. 從 KV 讀取必要的營運資料
+  const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
+  const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
+
+  const targetRoom = allRooms.find(room => room.id === roomId);
+  if (!targetRoom) return { error: 'Room not found', availableCount: 0 };
+
+  // 2. 從 Google Sheet 讀取即時的訂單資料
+  const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+  const sheetId = env.GOOGLE_SHEET_ID;
+  const range = 'bookings!A2:K';
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+  const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+  if (!response.ok) throw new Error('Failed to fetch bookings');
+  const sheetData = await response.json();
+  const bookings = (sheetData.values || []).map(row => ({
+    roomId: row[4], checkInDate: row[5], checkOutDate: row[6], status: row[10]
+  }));
+
+  // 3. 核心演算法：計算每日剩餘數量
+  let minAvailableCount = Infinity;
+  const startDate = new Date(startDateStr);
+  const endDate = new Date(endDateStr);
+
+  let currentDate = new Date(startDate);
+  while (currentDate < endDate) {
+    const dateString = currentDate.toISOString().split('T')[0];
+    const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
+
+    // 優先權 1: 強制關房
+    if (dayOverrides && dayOverrides.isClosed) {
+      minAvailableCount = 0;
+      break; 
+    }
+
+    // 優先權 2: 手動設定的庫存
+    let dayTotalQuantity = targetRoom.totalQuantity;
+    if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
+      dayTotalQuantity = dayOverrides.inventory;
+    }
+
+    // 計算當日已預訂數量
+    const occupiedCount = bookings.filter(b => {
+      const checkIn = new Date(b.checkInDate);
+      const checkOut = new Date(b.checkOutDate);
+      return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
+    }).length;
+
+    const available = dayTotalQuantity - occupiedCount;
+    if (available < minAvailableCount) {
+      minAvailableCount = available;
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return {
+    roomId, startDate: startDateStr, endDate: endDateStr,
+    availableCount: Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount),
+  };
+}
