@@ -246,28 +246,52 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
 
 
 async function syncGoogleSheetToKV(env) {
-  // ... (此處程式碼完全不變)
+  console.log("Step 1: Starting sync process...");
+
+  // 1. 取得 Google API 的存取令牌
+  console.log("Step 2: Attempting to get Google Auth Token...");
   const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+  console.log("Step 3: Successfully got Google Auth Token.");
+
+  // 2. 使用令牌從 Google Sheet API 讀取資料
   const sheetId = env.GOOGLE_SHEET_ID;
   const range = 'rooms!A2:G';
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
-  const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+
+  console.log("Step 4: Attempting to fetch data from Google Sheets API...");
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  console.log(`Step 5: Received response from Google Sheets API. Status: ${response.status}`);
+
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(`Google Sheets API error: ${JSON.stringify(errorData)}`);
   }
+
   const sheetData = await response.json();
   const rows = sheetData.values || [];
-  const rooms = rows.map(row => ({
-    id: row[0] || '',
-    name: row[1] || '',
-    description: row[2] || '',
-    price: parseInt(row[3], 10) || 0,
-    totalQuantity: parseInt(row[4], 10) || 0,
-    imageUrl: row[5] || '',
-    isActive: (row[6] || 'FALSE').toUpperCase() === 'TRUE',
-  })).filter(room => room.id && room.isActive);
+  console.log(`Step 6: Successfully parsed sheet data. Found ${rows.length} rows.`);
+
+  // 3. 將 Google Sheet 的原始資料轉換成乾淨的 JSON 物件陣列
+  const rooms = rows.map(row => {
+    return {
+      id: row[0] || '',
+      name: row[1] || '',
+      description: row[2] || '',
+      price: parseInt(row[3], 10) || 0,
+      totalQuantity: parseInt(row[4], 10) || 0,
+      imageUrl: row[5] || '',
+      isActive: (row[6] || 'FALSE').toUpperCase() === 'TRUE',
+    };
+  }).filter(room => room.id && room.isActive);
+  console.log(`Step 7: Processed and filtered data. ${rooms.length} rooms are active.`);
+
+  // 4. 將整理好的資料存入 KV 中
   await env.ROOMS_KV.put('all_rooms', JSON.stringify(rooms));
+  console.log("Step 8: Successfully wrote data to KV. Sync complete.");
 }
 
 /**
