@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     let lineProfile = {}, selectedRoom = {}, datepicker;
-    let selectedDates = []; // 【新增】我們自己的「籃子」，用來存放選好的日期
+    let selectedDates = []; 
 
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function openBookingModal(room) {
         selectedRoom = room;
+        selectedDates = [];
         modalRoomName.textContent = `預訂房型： ${room.name}`;
         bookingErrorEl.textContent = '';
         priceCalculationEl.textContent = '';
@@ -137,19 +138,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleDateChange(e) {
-        if (!e.detail || !e.detail.date) return;
-
-        selectedDates = e.detail.date; // 【關鍵修正】把收到的日期，存進我們自己的「籃子」裡
-
-        priceCalculationEl.textContent = '';
-        submitBookingButton.disabled = true;
-
-        if (selectedDates.length < 2) return;
-
+        if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
+            priceCalculationEl.textContent = '';
+            submitBookingButton.disabled = true;
+            return;
+        }
+        selectedDates = e.detail.date;
         const dates = selectedDates.map(date => formatDate(date));
         const [startDate, endDate] = dates;
         availabilityResultEl.textContent = '正在查詢空房...';
-
         try {
             const response = await fetch(`${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`);
             if (!response.ok) throw new Error('查詢空房請求失敗');
@@ -169,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-
     function calculatePrice(startDate, endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
@@ -180,8 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-   async function submitBooking() {
-        // 【關鍵修正】直接從我們自己的「籃子」裡拿日期，不再使用有問題的 getDates()
+    async function submitBooking() {
         if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
             bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
             return;
