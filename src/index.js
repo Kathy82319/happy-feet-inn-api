@@ -345,6 +345,83 @@ async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
 }
 
 
-// --- 輔助函式 (保持不變) ---
-function pemToArrayBuffer(pem) { /* ... */ }
-async function getGoogleAuthToken(serviceAccountKeyJson) { /* ... */ }
+// 請找到檔案底部的輔助函式區塊，並用下面這兩個新版本替換它們
+
+/**
+ * 輔助函式：將 PEM 格式的金鑰字串，轉換為加密函式庫所需的 ArrayBuffer 格式
+ * @param {string} pem - PEM 格式的金鑰字串
+ * @returns {ArrayBuffer}
+ */
+function pemToArrayBuffer(pem) {
+  const b64 = pem
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\s/g, '');
+  const binary_string = atob(b64);
+  const len = binary_string.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary_string.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+/**
+ * 【偵錯版】輔助函式：使用服務帳號金鑰產生 Google API 的 Access Token
+ * @param {string} serviceAccountKeyJson - 存在 Secret 中的服務帳號金鑰 (JSON 字串)
+ * @returns {Promise<string>} - Google API 的存取令牌
+ */
+async function getGoogleAuthToken(serviceAccountKeyJson) {
+  console.log("[Auth Log] Step A: Starting token generation.");
+
+  let serviceAccount;
+  try {
+    serviceAccount = JSON.parse(serviceAccountKeyJson);
+    console.log(`[Auth Log] Step B: Successfully parsed service account JSON for email: ${serviceAccount.client_email}`);
+  } catch (e) {
+    console.error("[Auth Log] Error: Failed to parse GCP_SERVICE_ACCOUNT_KEY JSON.", e);
+    throw new Error("Invalid GCP_SERVICE_ACCOUNT_KEY JSON format.");
+  }
+
+  const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
+
+  const jwt = await new SignJWT({
+    // 【重要】確保這裡使用的是完整的讀寫權限
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+  })
+    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+    .setIssuer(serviceAccount.client_email)
+    .setAudience('https://oauth2.googleapis.com/token')
+    .setExpirationTime('1h')
+    .setIssuedAt()
+    .sign(await crypto.subtle.importKey(
+        "pkcs8",
+        privateKeyBuffer,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["sign"]
+    ));
+  console.log("[Auth Log] Step C: Successfully created JWT.");
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+
+  const tokens = await response.json();
+
+  if (!response.ok || !tokens.access_token) {
+    console.error(`[Auth Log] Error: Failed to get access token from Google. Response: ${JSON.stringify(tokens)}`);
+    throw new Error('Failed to get access token from Google.');
+  }
+
+  console.log("[Auth Log] Step D: Successfully received access token from Google.");
+  // 為了安全，我們不在日誌中印出完整的 token，只確認它存在
+  // console.log(`[Auth Log] Token: ${tokens.access_token.substring(0, 20)}...`);
+
+  return tokens.access_token;
+}
