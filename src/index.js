@@ -146,76 +146,74 @@ async function syncAllSheetsToKV(env) {
 }
 
 async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
-    console.log(`\n--- [AV-DEBUG] START Availability Check ---`);
-    console.log(`[AV-DEBUG] RoomID: ${roomId}, Start: ${startDateStr}, End: ${endDateStr}`);
-    
-    const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
-    if (!allRooms) {
-        console.error("[AV-DEBUG] FATAL: Rooms data is missing from KV.");
-        return { error: 'Rooms data not found. Please sync first.', availableCount: 0 };
+  console.log(`\n--- [AV-DEBUG] START Availability Check ---`);
+  console.log(`[AV-DEBUG] RoomID: ${roomId}, Start: ${startDateStr}, End: ${endDateStr}`);
+
+  const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
+  // 【關鍵修正】確保我們正確地讀取 inventoryCalendar
+  const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
+
+  console.log("[AV-DEBUG] Fetched inventory calendar from KV:", JSON.stringify(inventoryCalendar, null, 2));
+
+  const targetRoom = allRooms.find(room => room.id === roomId);
+  if (!targetRoom) {
+    console.error("[AV-DEBUG] FATAL: Room not found in KV.");
+    return { error: 'Room not found', availableCount: 0 };
+  }
+  console.log(`[AV-DEBUG] Target room found. Base total quantity: ${targetRoom.totalQuantity}`);
+
+  const bookings = await fetchAllBookings(env);
+
+  let minAvailableCount = Infinity;
+  const startDate = new Date(startDateStr);
+  const endDate = new Date(endDateStr);
+
+  let currentDate = new Date(startDate);
+  while (currentDate < endDate) {
+    const dateString = formatDate(currentDate);
+    console.log(`\n[AV-DEBUG] >> Checking date: ${dateString}`);
+
+    // 【關鍵修正】確保我們使用正確的變數 dayOverrides
+    const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
+
+    if (dayOverrides) console.log(`[AV-DEBUG] Found override for this date:`, dayOverrides);
+    else console.log(`[AV-DEBUG] No override found for this date.`);
+
+    if (dayOverrides && dayOverrides.isClosed === true) {
+      console.log(`[AV-DEBUG] !! ROOM IS CLOSED on this date. Availability set to 0.`);
+      minAvailableCount = 0;
+      break; 
     }
-    const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
-    
-    console.log("[AV-DEBUG] Fetched inventory calendar from KV:", JSON.stringify(inventoryCalendar, null, 2));
 
-    const targetRoom = allRooms.find(room => room.id === roomId);
-    if (!targetRoom) {
-      console.error("[AV-DEBUG] FATAL: Room not found in KV.");
-      return { error: 'Room not found', availableCount: 0 };
+    let dayTotalQuantity = targetRoom.totalQuantity;
+    if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
+      dayTotalQuantity = dayOverrides.inventory;
+      console.log(`[AV-DEBUG] Manual inventory applied. New total quantity: ${dayTotalQuantity}`);
     }
-    console.log(`[AV-DEBUG] Target room found. Base total quantity: ${targetRoom.totalQuantity}`);
-    
-    const bookings = await fetchAllBookings(env);
-    
-    let minAvailableCount = Infinity;
-    const startDate = new Date(startDateStr);
-    const endDate = new Date(endDateStr);
 
-    let currentDate = new Date(startDate);
-    while (currentDate < endDate) {
-      const dateString = formatDate(currentDate);
-      console.log(`\n[AV-DEBUG] >> Checking date: ${dateString}`);
-      
-      const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
+    const occupiedCount = bookings.filter(b => {
+      const checkIn = new Date(b.checkInDate);
+      const checkOut = new Date(b.checkOutDate);
+      return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
+    }).length;
+    console.log(`[AV-DEBUG] Occupied rooms on this date: ${occupiedCount}`);
 
-      if (dayOverrides) console.log(`[AV-DEBUG] Found override for this date:`, dayOverrides);
-      else console.log(`[AV-DEBUG] No override found for this date.`);
+    const available = dayTotalQuantity - occupiedCount;
+    console.log(`[AV-DEBUG] Available rooms on this date: ${available} (Total: ${dayTotalQuantity} - Occupied: ${occupiedCount})`);
 
-      if (dayOverrides && dayOverrides.isClosed === true) {
-        console.log(`[AV-DEBUG] !! ROOM IS CLOSED on this date. Availability set to 0.`);
-        minAvailableCount = 0;
-        break; 
-      }
-
-      let dayTotalQuantity = targetRoom.totalQuantity;
-      if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
-        dayTotalQuantity = dayOverrides.inventory;
-        console.log(`[AV-DEBUG] Manual inventory applied. New total quantity: ${dayTotalQuantity}`);
-      }
-
-      const occupiedCount = bookings.filter(b => {
-        const checkIn = new Date(b.checkInDate);
-        const checkOut = new Date(b.checkOutDate);
-        return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
-      }).length;
-      console.log(`[AV-DEBUG] Occupied rooms on this date: ${occupiedCount}`);
-
-      const available = dayTotalQuantity - occupiedCount;
-      console.log(`[AV-DEBUG] Available rooms on this date: ${available} (Total: ${dayTotalQuantity} - Occupied: ${occupiedCount})`);
-
-      if (available < minAvailableCount) {
-        minAvailableCount = available;
-      }
-      currentDate.setDate(currentDate.getDate() + 1);
+    if (available < minAvailableCount) {
+      minAvailableCount = available;
     }
-    
-    const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
-    console.log(`--- [AV-DEBUG] END Availability Check. Final minimum count: ${finalCount} ---`);
-    
-    return {
-      roomId, startDate: startDateStr, endDate: endDateStr,
-      availableCount: finalCount,
-    };
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
+  console.log(`--- [AV-DEBUG] END Availability Check. Final minimum count: ${finalCount} ---`);
+
+  return {
+    roomId, startDate: startDateStr, endDate: endDateStr,
+    availableCount: finalCount,
+  };
 }
 
 async function writeBookingToSheet(env, booking) {
