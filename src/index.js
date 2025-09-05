@@ -1,6 +1,6 @@
 import { SignJWT } from 'jose';
 
-// --- 輔助函式 ---
+// 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
 function formatDate(date) {
     if (!(date instanceof Date) || isNaN(date)) return null;
     const year = date.getFullYear();
@@ -16,6 +16,7 @@ export default {
         const pathname = url.pathname;
         const method = request.method;
 
+        // 為了偵錯，我們暫時保留這個日誌
         console.log(`[Request] Method: ${method}, Path: ${pathname}`);
 
         if (pathname.startsWith('/api/')) {
@@ -26,8 +27,9 @@ export default {
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
                 else if (pathname === '/api/bookings' && method === 'POST') response = await handleCreateBooking(request, env);
                 else if (pathname === '/api/availability' && method === 'GET') response = await handleGetAvailability(request, env);
+                else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
-                
+
                 const newHeaders = new Headers(response.headers);
                 newHeaders.set('Access-Control-Allow-Origin', '*');
                 return new Response(response.body, { status: response.status, headers: newHeaders });
@@ -50,6 +52,7 @@ export default {
         }
     },
 };
+
 
 // --- API 處理函式 ---
 async function handleGetRooms(request, env) {
@@ -96,54 +99,29 @@ function handleCorsPreflight() {
     });
 }
 
-// --- 核心商業邏輯 (植入詳細日誌) ---
-
+// --- 核心商業邏輯 ---
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
     const ranges = ["rooms!A2:I", "inventory_calendar!A2:D", "pricing_rules!A2:C"];
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join("&ranges=")}`;
     const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[Sync Error] Failed to fetch from Google Sheets. Status: ${response.status}. Response: ${errorText}`);
-        throw new Error("Failed to fetch from Google Sheets");
-    }
+    if (!response.ok) { const errorText = await response.text(); console.error(`[Sync Error] ${errorText}`); throw new Error("Sync failed"); }
     const data = await response.json();
-    const [roomsData, inventoryData, pricingData] = data.valueRanges;
-    
-    const rooms = (roomsData.values || []).map(row => ({
-        id: row[0], name: row[1], description: row[2],
-        price: parseInt(row[3], 10) || 0,
-        fridayPrice: row[4] ? parseInt(row[4], 10) : null,
-        saturdayPrice: row[5] ? parseInt(row[5], 10) : null,
-        totalQuantity: parseInt(row[6], 10) || 0,
-        imageUrl: row[7],
-        isActive: (row[8] || "FALSE").toUpperCase() === "TRUE",
-    })).filter(room => room.id && room.isActive);
+    const [roomsRange, inventoryRange, pricingRange] = data.valueRanges;
+
+    const rooms = (roomsRange.values || []).map(r => ({ id: r[0], name: r[1], description: r[2], price: parseInt(r[3], 10) || 0, fridayPrice: r[4] ? parseInt(r[4], 10) : null, saturdayPrice: r[5] ? parseInt(r[5], 10) : null, totalQuantity: parseInt(r[6], 10) || 0, imageUrl: r[7], isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" })).filter(r => r.id && r.isActive);
     await env.ROOMS_KV.put("rooms_data", JSON.stringify(rooms));
 
     const inventoryCalendar = {};
-    (inventoryData.values || []).forEach(row => {
-        const [date, roomId, inventory, close] = row;
-        if (!date || !roomId) return;
-        if (!inventoryCalendar[date]) inventoryCalendar[date] = {};
-        inventoryCalendar[date][roomId] = {
-            inventory: inventory ? parseInt(inventory, 10) : null,
-            isClosed: (close || "FALSE").toUpperCase() === "TRUE",
-        };
-    });
+    (inventoryRange.values || []).forEach(r => { const [date, roomId, inventory, close] = r; if (!date || !roomId) return; if (!inventoryCalendar[date]) inventoryCalendar[date] = {}; inventoryCalendar[date][roomId] = { inventory: inventory ? parseInt(inventory, 10) : null, isClosed: (close || "FALSE").toUpperCase() === "TRUE" }; });
     await env.ROOMS_KV.put("inventory_calendar", JSON.stringify(inventoryCalendar));
 
     const pricingRules = {};
-    (pricingData.values || []).forEach(row => {
-        const [date, roomId, price] = row;
-        if (!date || !roomId || !price) return;
-        if (!pricingRules[date]) pricingRules[date] = {};
-        pricingRules[date][roomId] = parseInt(price, 10);
-    });
+    (pricingRange.values || []).forEach(r => { const [date, roomId, price] = r; if (!date || !roomId || !price) return; if (!pricingRules[date]) pricingRules[date] = {}; pricingRules[date][roomId] = parseInt(price, 10); });
     await env.ROOMS_KV.put("pricing_rules", JSON.stringify(pricingRules));
 }
+
 
 async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
   console.log(`\n--- [AV-DEBUG] START Availability Check ---`);
