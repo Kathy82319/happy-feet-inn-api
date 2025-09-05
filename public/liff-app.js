@@ -120,26 +120,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-        function initializeDatepicker() {
-        if (datepicker) datepicker.destroy();
-        const Datepicker = window.Datepicker;
-        if (!Datepicker) {
-            console.error("Datepicker library not loaded!");
-            return;
-        }
-        datepicker = new Datepicker(dateRangePickerEl, {
-            language: 'zh-TW',
-            format: 'yyyy-mm-dd',
-            autohide: true,
-            todayHighlight: true,
-            minDate: new Date(),
-            // --- 【關鍵修正】啟用 'range' 選項，並移除 'maxNumberOfDates' ---
-            range: true, // 啟用日期範圍選擇
-            // maxNumberOfDates: 2, // 移除這個，讓它能選擇連續區間
-            buttonClass: 'btn',
-        });
-        dateRangePickerEl.addEventListener('changeDate', handleDateChange);
+function initializeDatepicker() {
+    if (datepicker) datepicker.destroy();
+    const Datepicker = window.Datepicker;
+    if (!Datepicker) {
+        console.error("Datepicker library not loaded!");
+        return;
     }
+    datepicker = new Datepicker(dateRangePickerEl, {
+        language: 'zh-TW',
+        format: 'yyyy-mm-dd',
+        autohide: true,
+        todayHighlight: true,
+        minDate: new Date(),
+        // --- 【關鍵修正】恢復成原本能正常運作的設定 ---
+        maxNumberOfDates: 2,
+        buttonClass: 'btn',
+    });
+    dateRangePickerEl.addEventListener('changeDate', handleDateChange);
+}
 
     // --- 【修正2】重寫整個 handleDateChange 函式，整合空房查詢與價格計算 ---
     async function handleDateChange(e) {
