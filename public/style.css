@@ -90,3 +90,105 @@ main{padding:1rem}
     color: #00B900;
     font-weight: bold;
 }
+
+/* --- 我的訂單頁面專用樣式 --- */
+
+#booking-list-container {
+    width: 100%;
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 0 10px;
+}
+
+.booking-card {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    overflow: hidden;
+    transition: transform 0.2s ease-in-out;
+}
+
+.booking-card:hover {
+    transform: translateY(-5px);
+}
+
+.booking-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;
+    background-color: #f7f7f7;
+    border-bottom: 1px solid #eee;
+}
+
+.booking-card-header h3 {
+    margin: 0;
+    font-size: 1.1em;
+    color: #333;
+}
+
+.status-badge {
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #fff;
+}
+
+.status-badge.status-pending_payment { background-color: #ff9800; } /* 橘色 */
+.status-badge.status-confirmed { background-color: #4CAF50; } /* 綠色 */
+.status-badge.status-cancelled { background-color: #f44336; } /* 紅色 */
+.status-badge.status-completed { background-color: #607d8b; } /* 灰色 */
+
+.booking-card-body {
+    display: flex;
+    padding: 20px;
+    gap: 20px;
+}
+
+.booking-card-body img {
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 6px;
+}
+
+.booking-details p {
+    margin: 0 0 8px 0;
+    font-size: 0.9em;
+    color: #555;
+}
+
+.booking-details p strong {
+    color: #333;
+    margin-right: 5px;
+}
+
+.booking-card-footer {
+    padding: 15px 20px;
+    text-align: right;
+    background-color: #f7f7f7;
+    border-top: 1px solid #eee;
+}
+
+.booking-card-footer .cancel-button {
+    background-color: #f44336; /* 紅色 */
+    border: none;
+    padding: 8px 15px;
+}
+.booking-card-footer .cancel-button:hover {
+    background-color: #d32f2f;
+}
+
+.back-button-container {
+    text-align: center;
+    margin-top: 30px;
+}
+
+#no-booking-message, .error-message {
+    text-align: center;
+    padding: 40px;
+    color: #777;
+    font-size: 1.1em;
+}

@@ -9,7 +9,7 @@ compatibility_date = "2025-08-31" # 你可以使用今天的日期
 
 [vars]
 # 請務必將這裡的 ID 換成你自己的 Google Sheet ID
-GOOGLE_SHEET_ID = "1aBcDeFgHiJkLmNoPqRsTuVwXyZ_YOUR_SHEET_ID"
+GOOGLE_SHEET_ID = "1MOFcdTXg7x1NK-yaYoHHoHwC6NWGbWF4K64wNUmdD1w"
 
 [triggers]
 # "*/5 * * * *" 代表每 5 分鐘執行一次

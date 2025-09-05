@@ -26,8 +26,10 @@ export default {
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
                 else if (pathname === '/api/bookings' && method === 'POST') response = await handleCreateBooking(request, env);
                 else if (pathname === '/api/availability' && method === 'GET') response = await handleGetAvailability(request, env);
-                // --- 【關鍵修正！】在這裡加上 /api/calculate-price 的路由 ---
                 else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
+                // --- 【v3.0 新增功能】查詢與取消訂單的 API 路由 ---
+                else if (pathname === '/api/my-bookings' && method === 'GET') response = await handleGetMyBookings(request, env);
+                else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
                 const newHeaders = new Headers(response.headers);
@@ -35,7 +37,7 @@ export default {
                 return new Response(response.body, { status: response.status, headers: newHeaders });
             } catch (error) {
                 console.error(`[Error] Unhandled API error on ${method} ${pathname}:`, error.stack);
-                return new Response(JSON.stringify({ error: 'An internal server error occurred.' }), { 
+                return new Response(JSON.stringify({ error: error.message || 'An internal server error occurred.' }), { 
                     status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
                 });
             }
@@ -56,25 +58,45 @@ export default {
 
 // --- API 處理函式 ---
 
-// --- 【關鍵修正！】新增 handleCalculatePrice 函式來處理前端請求 ---
+// --- 【v3.0 新增】處理「取得我的訂單」請求 ---
+async function handleGetMyBookings(request, env) {
+    const url = new URL(request.url);
+    const lineUserId = url.searchParams.get("lineUserId");
+    if (!lineUserId) {
+        return new Response(JSON.stringify({ error: "Missing lineUserId" }), { status: 400 });
+    }
+    const allBookings = await fetchAllBookings(env);
+    // 篩選出屬於這個 lineUserId 的訂單
+    const myBookings = allBookings.filter(b => b.lineUserId === lineUserId);
+    return new Response(JSON.stringify(myBookings), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+// --- 【v3.0 新增】處理「取消訂單」請求 ---
+async function handleCancelBooking(request, env) {
+    const { bookingId, lineUserId } = await request.json();
+    if (!bookingId || !lineUserId) {
+        return new Response(JSON.stringify({ error: "Missing bookingId or lineUserId" }), { status: 400 });
+    }
+    
+    // 執行取消邏輯
+    await cancelBookingInSheet(env, bookingId, lineUserId);
+
+    return new Response(JSON.stringify({ success: true, message: "Booking cancelled successfully" }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
 async function handleCalculatePrice(request, env) {
     const url = new URL(request.url);
     const roomId = url.searchParams.get("roomId");
     const startDate = url.searchParams.get("startDate");
     const endDate = url.searchParams.get("endDate");
-
     if (!roomId || !startDate || !endDate) {
-        return new Response(JSON.stringify({ error: "Missing required parameters for price calculation" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ error: "Missing required parameters for price calculation" }), { status: 400 });
     }
-
-    // 直接呼叫我們已經寫好的內部商業邏輯函式
     const totalPrice = await calculateTotalPrice(env, roomId, startDate, endDate);
-    
-    // 將計算結果包裝成 JSON 回傳給前端
     return new Response(JSON.stringify({ totalPrice }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-
+// ... (其他 handle 函式維持不變)
 async function handleGetRooms(request, env) {
     const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
     if (!roomsData) {
@@ -92,7 +114,7 @@ async function handleGetAvailability(request, env) {
     const url = new URL(request.url);
     const roomId = url.searchParams.get("roomId");
     const startDate = url.searchParams.get("startDate");
-    const endDate = url.searchParams.get("endDate");
+    const endDate = url.search_params.get("endDate");
     if (!roomId || !startDate || !endDate) {
         return new Response(JSON.stringify({ error: "Missing required parameters" }), { status: 400, headers: { "Content-Type": "application/json" } });
     }
@@ -119,7 +141,89 @@ function handleCorsPreflight() {
     });
 }
 
-// --- 核心商業邏輯 (以下不變) ---
+
+// --- 核心商業邏輯 ---
+
+// --- 【v3.0 新增】取消訂單的核心邏輯 ---
+async function cancelBookingInSheet(env, bookingId, lineUserId) {
+    const allBookings = await fetchAllBookings(env, true); // true 表示需要回傳 row number
+    const targetBooking = allBookings.find(b => b.bookingId === bookingId);
+
+    if (!targetBooking) {
+        throw new Error("找不到此訂單。");
+    }
+    if (targetBooking.lineUserId !== lineUserId) {
+        throw new Error("權限不足，無法取消不屬於您的訂單。");
+    }
+    if (targetBooking.status === 'CANCELLED') {
+        throw new Error("此訂單已經是取消狀態。");
+    }
+
+    // 檢查是否符合取消政策
+    const checkInDate = new Date(targetBooking.checkInDate);
+    const today = new Date();
+    // 設定 today 到午夜 00:00:00，以確保日期比較是公平的
+    today.setHours(0, 0, 0, 0);
+    
+    // 計算入住日和今天相差幾天
+    const diffTime = checkInDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // diffDays < 2 代表入住日是今天 (diffDays=0) 或明天 (diffDays=1)
+    if (diffDays < 2) {
+        throw new Error("訂房當日(或前一日)不可取消，若有問題請洽客服人員");
+    }
+
+    // 更新 Google Sheet
+    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+    const sheetId = env.GOOGLE_SHEET_ID;
+    // status 是第 K 欄，也就是第 11 欄
+    const range = `bookings!K${targetBooking.rowNumber}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+
+    const response = await fetch(url, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [['CANCELLED']] }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to update booking status in Google Sheets:", errorText);
+        throw new Error("更新訂單狀態失敗。");
+    }
+}
+
+
+// --- 【v3.0 修改】fetchAllBookings 函式，增加回傳行號的功能 ---
+async function fetchAllBookings(env, includeRowNumber = false) {
+    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+    const sheetId = env.GOOGLE_SHEET_ID;
+    const range = "bookings!A2:K";
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) throw new Error("Failed to fetch bookings from Google Sheet");
+    const sheetData = await response.json();
+    return (sheetData.values || []).map((row, index) => {
+        const booking = {
+            bookingId: row[0],
+            timestamp: row[1],
+            lineUserId: row[2],
+            roomId: row[4],
+            checkInDate: row[5],
+            checkOutDate: row[6],
+            guestName: row[7],
+            totalPrice: row[9],
+            status: row[10]
+        };
+        if (includeRowNumber) {
+            booking.rowNumber = index + 2; // +2 因為資料從 A2 開始，且 index 從 0 開始
+        }
+        return booking;
+    });
+}
+
+// ... (其他商業邏輯函式維持不變)
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
@@ -150,14 +254,11 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
   const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
   const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
 
-  console.log("[AV-DEBUG] Fetched inventory calendar from KV:", JSON.stringify(inventoryCalendar, null, 2));
-
   const targetRoom = allRooms.find(room => room.id === roomId);
   if (!targetRoom) {
     console.error("[AV-DEBUG] FATAL: Room not found in KV.");
     return { error: 'Room not found', availableCount: 0 };
   }
-  console.log(`[AV-DEBUG] Target room found. Base total quantity: ${targetRoom.totalQuantity}`);
 
   const bookings = await fetchAllBookings(env);
 
@@ -168,15 +269,9 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
   let currentDate = new Date(startDate);
   while (currentDate < endDate) {
     const dateString = formatDate(currentDate);
-    console.log(`\n[AV-DEBUG] >> Checking date: ${dateString}`);
-
     const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
 
-    if (dayOverrides) console.log(`[AV-DEBUG] Found override for this date:`, dayOverrides);
-    else console.log(`[AV-DEBUG] No override found for this date.`);
-
     if (dayOverrides && dayOverrides.isClosed === true) {
-      console.log(`[AV-DEBUG] !! ROOM IS CLOSED on this date. Availability set to 0.`);
       minAvailableCount = 0;
       break; 
     }
@@ -184,7 +279,6 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
     let dayTotalQuantity = targetRoom.totalQuantity;
     if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
       dayTotalQuantity = dayOverrides.inventory;
-      console.log(`[AV-DEBUG] Manual inventory applied. New total quantity: ${dayTotalQuantity}`);
     }
 
     const occupiedCount = bookings.filter(b => {
@@ -192,10 +286,8 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
       const checkOut = new Date(b.checkOutDate);
       return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
     }).length;
-    console.log(`[AV-DEBUG] Occupied rooms on this date: ${occupiedCount}`);
 
     const available = dayTotalQuantity - occupiedCount;
-    console.log(`[AV-DEBUG] Available rooms on this date: ${available} (Total: ${dayTotalQuantity} - Occupied: ${occupiedCount})`);
 
     if (available < minAvailableCount) {
       minAvailableCount = available;
@@ -204,7 +296,6 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
   }
 
   const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
-  console.log(`--- [AV-DEBUG] END Availability Check. Final minimum count: ${finalCount} ---`);
 
   return {
     roomId, startDate: startDateStr, endDate: endDateStr,
@@ -217,7 +308,6 @@ async function writeBookingToSheet(env, booking) {
     if (availability.availableCount <= 0) {
         throw new Error("Sorry, the room is no longer available for the selected dates.");
     }
-    // 【修正】這裡直接使用前端傳來的 totalPrice，不再重新計算
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
     const range = "bookings!A:K";
@@ -229,7 +319,7 @@ async function writeBookingToSheet(env, booking) {
         booking.lineUserId || "", booking.lineDisplayName || "",
         booking.roomId, booking.checkInDate, booking.checkOutDate,
         booking.guestName, booking.guestPhone || "",
-        booking.totalPrice, // 直接使用前端傳來的價格
+        booking.totalPrice,
         "PENDING_PAYMENT",
     ];
     const response = await fetch(url, {
@@ -242,14 +332,9 @@ async function writeBookingToSheet(env, booking) {
 }
 
 async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
-    console.log(`\n--- [PRICE-DEBUG] START Price Calculation ---`);
-    console.log(`[PRICE-DEBUG] RoomID: ${roomId}, Start: ${startDateStr}, End: ${endDateStr}`);
-    
     const allRooms = await env.ROOMS_KV.get("rooms_data", "json");
     const pricingRules = await env.ROOMS_KV.get("pricing_rules", "json") || {};
     
-    console.log("[PRICE-DEBUG] Fetched pricing rules from KV:", JSON.stringify(pricingRules, null, 2));
-
     const targetRoom = allRooms.find(room => room.id === roomId);
     if (!targetRoom) throw new Error("Room not found for price calculation.");
     
@@ -260,46 +345,26 @@ async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
     let currentDate = new Date(startDate);
     while (currentDate < endDate) {
         const dateString = formatDate(currentDate);
-        const dayOfWeek = currentDate.getDay(); // 0=Sun, 5=Fri, 6=Sat
+        const dayOfWeek = currentDate.getDay();
         
         let dailyPrice = targetRoom.price;
-        console.log(`\n[PRICE-DEBUG] >> Checking date: ${dateString} (Day of week: ${dayOfWeek})`);
-        console.log(`[PRICE-DEBUG] Base price: ${dailyPrice}`);
-
-        // 【修正】修正週末價的判斷邏輯，確保 null 或 0 不會被採用
         if (dayOfWeek === 5 && targetRoom.fridayPrice) {
             dailyPrice = targetRoom.fridayPrice;
-            console.log(`[PRICE-DEBUG] Friday price applied: ${dailyPrice}`);
         } else if (dayOfWeek === 6 && targetRoom.saturdayPrice) {
             dailyPrice = targetRoom.saturdayPrice;
-            console.log(`[PRICE-DEBUG] Saturday price applied: ${dailyPrice}`);
         }
         
         if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
             dailyPrice = pricingRules[dateString][roomId];
-            console.log(`[PRICE-DEBUG] !! Special price rule applied: ${dailyPrice}`);
         }
         
         totalPrice += dailyPrice;
         currentDate.setDate(currentDate.getDate() + 1);
     }
-    console.log(`--- [PRICE-DEBUG] END Price Calculation. Final total price: ${totalPrice} ---`);
     return totalPrice;
 }
 
-async function fetchAllBookings(env) {
-    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
-    const sheetId = env.GOOGLE_SHEET_ID;
-    const range = "bookings!A2:K";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!response.ok) throw new Error("Failed to fetch bookings from Google Sheet");
-    const sheetData = await response.json();
-    return (sheetData.values || []).map(row => ({
-        roomId: row[4], checkInDate: row[5], checkOutDate: row[6], status: row[10]
-    }));
-}
-
+// ... (getGoogleAuthToken 和 pemToArrayBuffer 維持不變)
 function pemToArrayBuffer(pem) {
     const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s/g, "");
     const binary_string = atob(b64);
@@ -316,7 +381,7 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
     const serviceAccount = JSON.parse(serviceAccountKeyJson);
     const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
     const jwt = await new SignJWT({ scope: "https://www.googleapis.com/auth/spreadsheets" })
-        .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+        .setProtectedHeader({ alg: "RS265", typ: "JWT" })
         .setIssuer(serviceAccount.client_email)
         .setAudience("https://oauth2.googleapis.com/token")
         .setExpirationTime("1h")
