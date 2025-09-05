@@ -103,8 +103,7 @@ async function handleGetAvailability(request, env) {
     const url = new URL(request.url);
     const roomId = url.searchParams.get("roomId");
     const startDate = url.searchParams.get("startDate");
-    // --- 【v3.2 修正】修正之前錯打的 search_params ---
-    const endDate = url.searchParams.get("endDate"); 
+    const endDate = url.searchParams.get("endDate");
     if (!roomId || !startDate || !endDate) {
         return new Response(JSON.stringify({ error: "Missing required parameters" }), { status: 400, headers: { "Content-Type": "application/json" } });
     }
@@ -169,7 +168,6 @@ async function cancelBookingInSheet(env, bookingId, lineUserId) {
     }
 }
 
-// --- 【v3.2 修正】fetchAllBookings 函式，確保 totalPrice 是數字 ---
 async function fetchAllBookings(env, includeRowNumber = false) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
@@ -187,17 +185,15 @@ async function fetchAllBookings(env, includeRowNumber = false) {
             checkInDate: row[5],
             checkOutDate: row[6],
             guestName: row[7],
-            // 確保從 Google Sheet 過來的價格被正確解析為數字
             totalPrice: parseInt(row[9], 10) || 0,
             status: row[10]
         };
         if (includeRowNumber) {
-            booking.rowNumber = index + 2; 
+            booking.rowNumber = index + 2;
         }
         return booking;
     });
 }
-
 
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
@@ -329,45 +325,45 @@ function pemToArrayBuffer(pem) {
     return bytes.buffer;
 }
 
-// --- 【v3.3 關鍵修正】修正 Google 認證邏輯 ---
 async function getGoogleAuthToken(serviceAccountKeyJson) {
     if (!serviceAccountKeyJson) throw new Error("GCP_SERVICE_ACCOUNT_KEY is not available.");
+    
     const serviceAccount = JSON.parse(serviceAccountKeyJson);
     const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
-    
-    // 導入金鑰
+
     const privateKey = await crypto.subtle.importKey(
         "pkcs8",
         privateKeyBuffer,
         { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-        false,
+        true,
         ["sign"]
     );
 
-    // 建立 JWT
-    const jwt = await new SignJWT({})
+    const jwt = await new SignJWT({
+            scope: "https://www.googleapis.com/auth/spreadsheets"
+        })
         .setProtectedHeader({ alg: "RS256", typ: "JWT" })
         .setIssuer(serviceAccount.client_email)
         .setAudience("https://oauth2.googleapis.com/token")
-        .setSubject(serviceAccount.client_email) // 建議加上 subject
+        .setSubject(serviceAccount.client_email)
         .setIssuedAt()
         .setExpirationTime("1h")
-        .setPayload({ scope: "https://www.googleapis.com/auth/spreadsheets" })
         .sign(privateKey);
 
-    // 請求 Access Token
     const response = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-            grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            grant_type: "urn:ietf:params:oauth:grant-type-jwt-bearer",
             assertion: jwt,
         }),
     });
+
     const tokens = await response.json();
     if (!tokens.access_token) {
         console.error("Token exchange failed:", tokens);
         throw new Error("Failed to get access token from Google.");
     }
+
     return tokens.access_token;
 }
