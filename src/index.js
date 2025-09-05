@@ -166,9 +166,46 @@ async function handleCalculatePrice(request, env) {
 }
 
 async function handleGetRooms(request, env) {
-    const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
-    if (!roomsData) return new Response(JSON.stringify({ error: "Rooms data not found." }), { status: 404, headers: { "Content-Type": "application/json" } });
-    return new Response(JSON.stringify(roomsData), { status: 200, headers: { "Content-Type": "application/json" } });
+    console.log("[API-DEBUG] /api/rooms endpoint triggered.");
+    try {
+        console.log("[API-DEBUG] Attempting to get 'rooms_data' from KV...");
+        let roomsDataJsonString = await env.ROOMS_KV.get("rooms_data"); // 以纯文字格式读取
+
+        if (!roomsDataJsonString) {
+            console.error("[API-FATAL] 'rooms_data' in KV is null or undefined.");
+            return new Response(JSON.stringify({ error: "KV value for rooms_data is null." }), { 
+                status: 500, 
+                headers: { "Content-Type": "application/json" } 
+            });
+        }
+        
+        // --- 关键的清理步骤 ---
+        // 检查字串的第一个字元的 Unicode 码是否为 BOM (U+FEFF)
+        if (roomsDataJsonString.charCodeAt(0) === 0xFEFF) {
+            console.log("[API-DEBUG] BOM character detected. Removing it...");
+            // 如果是，就从第二个字元开始取，把 BOM 去掉
+            roomsDataJsonString = roomsDataJsonString.substring(1);
+        }
+
+        console.log("[API-DEBUG] Successfully fetched and cleaned string from KV. Length:", roomsDataJsonString.length);
+
+        // 手动解析 JSON
+        const roomsData = JSON.parse(roomsDataJsonString);
+        
+        console.log(`[API-DEBUG] JSON parsed successfully. Found ${roomsData.length} rooms.`);
+        
+        return new Response(JSON.stringify(roomsData), { 
+            status: 200, 
+            headers: { "Content-Type": "application/json" } 
+        });
+
+    } catch (error) {
+        console.error("[API-FATAL] An error occurred within handleGetRooms:", error.stack);
+        return new Response(JSON.stringify({ error: "An internal error occurred while processing rooms data.", details: error.message }), { 
+            status: 500, 
+            headers: { "Content-Type": "application/json" } 
+        });
+    }
 }
 
 async function handleSync(request, env) {
