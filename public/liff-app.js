@@ -8,6 +8,9 @@ function formatDate(date) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // --- 程式碼開頭先印出一個日誌，確保 JS 檔案有被正確載入 ---
+    console.log("[DEBUG] liff-app.js Loaded Successfully!");
+
     const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
@@ -55,6 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function fetchRooms() {
+        console.log("[DEBUG] Starting to fetch rooms..."); // 追蹤 fetchRooms 是否被呼叫
         document.querySelector('#loading-spinner p').textContent = '正在載入房型資料...';
         loadingSpinner.classList.remove('hidden');
         fetch(`${API_BASE_URL}/api/rooms`)
@@ -63,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return response.json();
             })
             .then(rooms => {
+                console.log(`[DEBUG] Successfully fetched ${rooms.length} rooms.`); // 確認收到幾間房
                 roomListDiv.innerHTML = '';
                 if (rooms.length === 0) {
                     roomListDiv.innerHTML = '<p>目前沒有可預訂的房型。</p>';
@@ -92,7 +97,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="cta-button">立即預訂</button>
             </div>
         `;
-        card.querySelector('.cta-button').addEventListener('click', () => openBookingModal(room));
+        
+        // --- 【v4.0 關鍵偵錯點】 ---
+        const bookingButton = card.querySelector('.cta-button');
+        if (bookingButton) {
+            console.log(`[DEBUG] Attaching listener to button for room: ${room.name}`);
+            bookingButton.addEventListener('click', () => {
+                // 如果你點擊按鈕後，F12 Console 有出現這一行，代表監聽器是好的！
+                console.log(`[SUCCESS] Button clicked for room: ${room.name}`);
+                openBookingModal(room);
+            });
+        } else {
+            // 如果 F12 Console 出現這一行，代表我們的 HTML 結構有問題
+            console.error(`[ERROR] Could not find .cta-button for room: ${room.name}`);
+        }
+        
         return card;
     }
 
@@ -106,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
         availabilityResultEl.textContent = '請選擇住房日期';
         submitBookingButton.disabled = true;
         submitBookingButton.textContent = '確認訂房';
-        submitBookingButton.style.backgroundColor = ''; // 恢復按鈕顏色
+        submitBookingButton.style.backgroundColor = ''; 
         guestPhoneInput.value = '';
         initializeDatepicker();
         bookingModal.classList.remove('hidden');
@@ -121,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function initializeDatepicker() {
+        // ... (以下所有函式維持不變)
         if (datepicker) datepicker.destroy();
         const Datepicker = window.Datepicker;
         if (!Datepicker) {
@@ -233,8 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
             submitBookingButton.style.backgroundColor = '#00B900';
             bookingErrorEl.textContent = '';
             availabilityResultEl.textContent = `訂單 ${result.bookingId} 已送出，3 秒後將返回訂房首頁。`;
-
-            // --- 【v3.0 關鍵修正】延遲 3 秒鐘，然後返回訂房首頁 ---
+            
             setTimeout(() => {
                 window.location.href = 'index.html';
             }, 3000);
