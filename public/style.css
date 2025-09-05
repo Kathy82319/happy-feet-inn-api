@@ -39,34 +39,38 @@ main{padding:1rem}
     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
-/* --- 【v2.3 JavaScript 輔助版】日曆區間樣式 --- */
+/* --- 【v3.0 重構版】日曆區間樣式 --- */
 
-/* 1. 基礎：先把所有 selected 的預設藍色背景改成我們的綠色 */
+/* 1. 基礎：所有被選中的日期 (selected class) 都先變成綠色 */
 .datepicker-cell.selected:not(.disabled) {
     background-color: #00B900 !important;
     color: white !important;
 }
 
-/* 2. 【關鍵修正！】為我們用 JS 手動添加的 class 上色 */
+/* 2. 為我們用 JS 手動添加的 class 上色 */
 .datepicker-cell.range-middle-custom {
     background-color: #e6f7ec !important; /* 淺綠色 */
     border-radius: 0 !important;
     color: #333 !important;
 }
 
-/* 3. 處理【起始日期】的圓角 */
+/* 3. 使用 datepicker 內建的 start-date 和 end-date class 來處理圓角 */
 .datepicker-cell.selected.start-date:not(.disabled) {
     border-radius: 50px 0 0 50px !important;
 }
 
-/* 4. 處理【結束日期】的圓角 */
 .datepicker-cell.selected.end-date:not(.disabled) {
     border-radius: 0 50px 50px 0 !important;
 }
 
-/* 5. 處理【只選一天】的情況 */
+/* 4. 只選一天時恢復成圓形 */
 .datepicker-cell.selected.start-date.end-date:not(.disabled) {
     border-radius: 50px !important;
+}
+
+/* 5. 優化：滑鼠懸停在可選日期上時，給予視覺回饋 */
+.datepicker-cell:not(.disabled):not(.selected):hover {
+    background-color: #f0f0f0;
 }
 
 /* 6. 其他 UI 優化 */
