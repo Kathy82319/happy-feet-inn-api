@@ -97,7 +97,6 @@ function handleCorsPreflight() {
     });
 }
 
-
 // --- 核心商業邏輯 ---
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
@@ -146,7 +145,6 @@ async function syncAllSheetsToKV(env) {
     await env.ROOMS_KV.put("pricing_rules", JSON.stringify(pricingRules));
 }
 
-// --- 核心商業邏輯 (植入詳細日誌) ---
 async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
   console.log(`\n--- [AV-DEBUG] START Availability Check ---`);
   console.log(`[AV-DEBUG] RoomID: ${roomId}, Start: ${startDateStr}, End: ${endDateStr}`);
@@ -327,7 +325,6 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
     return tokens.access_token;
 }
 
-
 // --- 【重要】下方是所有函式的完整、正確實作 ---
 
 async function handleGetRooms(request, env) {
@@ -374,8 +371,6 @@ function handleCorsPreflight() {
     });
 }
 
-
-// --- 核心商業邏輯 ---
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
@@ -389,7 +384,7 @@ async function syncAllSheetsToKV(env) {
     }
     const data = await response.json();
     const [roomsData, inventoryData, pricingData] = data.valueRanges;
-    
+
     const rooms = (roomsData.values || []).map(row => ({
         id: row[0], name: row[1], description: row[2],
         price: parseInt(row[3], 10) || 0,
@@ -428,9 +423,9 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
     const inventoryCalendar = await env.ROOMS_KV.get("inventory_calendar", "json") || {};
     const targetRoom = allRooms.find(room => room.id === roomId);
     if (!targetRoom) return { error: "Room not found", availableCount: 0 };
-    
+
     const bookings = await fetchAllBookings(env);
-    
+
     let minAvailableCount = Infinity;
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
@@ -444,25 +439,25 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
             minAvailableCount = 0;
             break;
         }
-        
+
         let dayTotalQuantity = targetRoom.totalQuantity;
         if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
             dayTotalQuantity = dayOverrides.inventory;
         }
-        
+
         const occupiedCount = bookings.filter(b => {
             const checkIn = new Date(b.checkInDate);
             const checkOut = new Date(b.checkOutDate);
             return b.roomId === roomId && b.status !== "CANCELLED" && currentDate >= checkIn && currentDate < checkOut;
         }).length;
-        
+
         const available = dayTotalQuantity - occupiedCount;
         if (available < minAvailableCount) {
             minAvailableCount = available;
         }
         currentDate.setDate(currentDate.getDate() + 1);
     }
-    
+
     const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
     return {
         roomId, startDate: startDateStr, endDate: endDateStr,
@@ -557,8 +552,6 @@ async function fetchAllBookings(env) {
     }));
 }
 
-
-// --- Google 驗證輔助函式 ---
 function pemToArrayBuffer(pem) {
     const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s/g, "");
     const binary_string = atob(b64);
