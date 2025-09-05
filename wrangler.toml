@@ -16,3 +16,5 @@ GOOGLE_SHEET_ID = "1MOFcdTXg7x1NK-yaYoHHoHwC6NWGbWF4K64wNUmdD1w"
 crons = ["*/5 * * * *"]
 
 # Final DNS refresh trigger
+
+pages_build_output_dir = "public"
