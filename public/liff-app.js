@@ -134,72 +134,89 @@ function initializeDatepicker() {
     datepicker = new Datepicker(dateRangePickerEl, {
         language: 'zh-TW',
         format: 'yyyy-mm-dd',
-        autohide: false, // 【修正】暫時不自動隱藏，方便使用者看清楚選擇過程
+        autohide: true,
         todayHighlight: true,
         minDate: new Date(),
-        // --- 【v3.0 修正】我們不再使用 maxNumberOfDates，而是自己控制邏輯 ---
+        // --- 【v4.0 關鍵】回到最穩定、最不會出錯的內建雙日期模式 ---
+        maxNumberOfDates: 2,
         buttonClass: 'btn',
     });
     
-    // --- 【v3.0 修正】移除舊的監聽器，改用我們自訂的邏輯 ---
-    // dateRangePickerEl.addEventListener('changeDate', handleDateChange);
-    
-    datepicker.picker.element.addEventListener('click', (e) => {
-        // 確保我們點擊的是一個日期方塊，而不是其他地方
-        if (e.target.classList.contains('datepicker-cell') && !e.target.classList.contains('disabled')) {
-            const clickedDate = datepicker.getDate(e.target.textContent);
-            handleDateSelection(clickedDate);
-        }
-    });
+    // --- 【v4.0 關鍵】使用函式庫內建、最穩定的 changeDate 事件 ---
+    dateRangePickerEl.addEventListener('changeDate', handleDateChange);
 }
 
+
 // --- 【v3.0 全新函式】處理日期點擊的核心邏輯 ---
-function handleDateSelection(selectedDate) {
-    if (isSelectingStartDate) {
-        // --- 階段一：選擇起始日期 ---
-        firstDate = selectedDate;
-        // 使用 datepicker 的 setDates 方法來高亮選中的日期
-        datepicker.setDates(firstDate);
-        
-        // 鎖定起始日期之前的日期
-        const allCells = datepicker.picker.element.querySelectorAll('.datepicker-cell');
-        allCells.forEach(cell => {
-            const cellDate = datepicker.getDate(cell.textContent);
-            if (cellDate < firstDate) {
-                cell.classList.add('disabled');
-            }
-        });
+async function handleDateChange(e) {
+    // --- 每次日期變更時，先清除之前手動添加的樣式 ---
+    document.querySelectorAll('.range-middle-custom').forEach(el => {
+        el.classList.remove('range-middle-custom');
+    });
 
-        isSelectingStartDate = false; // 切換到選擇結束日的模式
+    // 重置狀態
+    priceCalculationEl.textContent = '';
+    submitBookingButton.disabled = true;
+
+    // 函式庫在選滿2個日期前，e.detail.date 的長度會是 1
+    if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
         availabilityResultEl.textContent = '請選擇退房日期';
-        priceCalculationEl.textContent = '';
-        submitBookingButton.disabled = true;
+        return; // 如果日期選擇不完整，提示使用者並返回
+    }
 
-    } else {
-        // --- 階段二：選擇結束日期 ---
-        if (selectedDate <= firstDate) {
-            // 如果使用者選了更早的日期，就重置流程，讓他重新選起始日
-            isSelectingStartDate = true;
-            firstDate = null;
-            datepicker.setDates([]); // 清空選擇
-            const allCells = datepicker.picker.element.querySelectorAll('.datepicker-cell');
-            allCells.forEach(cell => { cell.classList.remove('disabled'); });
-            handleDateSelection(selectedDate); // 重新執行一次，將這次點擊當作新的起始日
-            return;
+    selectedDates = e.detail.date;
+    // 【v4.0 修正】確保日期是從早到晚排序，杜絕負數天數
+    selectedDates.sort((a, b) => a - b);
+    
+    const dates = selectedDates.map(date => formatDate(date));
+    const [startDate, endDate] = dates;
+
+    // 更新 input 框的顯示值
+    datepicker.setDates(selectedDates);
+
+    availabilityResultEl.textContent = '正在查詢空房與價格...';
+
+    try {
+        const startDateObj = new Date(startDate);
+        const endDateObj = new Date(endDate);
+
+        const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+        const availabilityResponse = await fetch(availabilityUrl);
+        if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
+        const availabilityData = await availabilityResponse.json();
+        if (availabilityData.error) throw new Error(availabilityData.error);
+
+        if (availabilityData.availableCount > 0) {
+            const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+            const priceResponse = await fetch(priceUrl);
+            if (!priceResponse.ok) throw new Error('價格計算失敗');
+            const priceData = await priceResponse.json();
+
+            finalTotalPrice = priceData.totalPrice;
+            const nights = (endDateObj - startDateObj) / (1000 * 60 * 60 * 24);
+            availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
+            priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
+            submitBookingButton.disabled = false;
+
+            // 手動為中間日期添加自訂 class
+            let currentDate = new Date(startDateObj);
+            currentDate.setDate(currentDate.getDate() + 1);
+            while (currentDate < endDateObj) {
+                const dateString = formatDate(currentDate);
+                const cellSelector = `.datepicker-cell[data-date='${new Date(dateString).getTime()}']`;
+                const cellElement = document.querySelector(cellSelector);
+                if (cellElement) {
+                    cellElement.classList.add('range-middle-custom');
+                }
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+        } else {
+            availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
         }
-
-        const secondDate = selectedDate;
-        datepicker.setDates(firstDate, secondDate); // 讓 datepicker 知道選了兩個日期
-        
-        // --- 觸發查詢 API ---
-        triggerApiCheck(firstDate, secondDate);
-        
-        // 查詢後重置狀態，以便進行下一次選擇
-        isSelectingStartDate = true;
-        firstDate = null;
-        setTimeout(() => { // 延遲一點關閉，讓使用者能看到選取的範圍
-            datepicker.hide();
-        }, 500);
+    } catch (error) {
+        availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
+        console.error("API check failed:", error);
     }
 }
 
