@@ -16,8 +16,6 @@ export default {
         const pathname = url.pathname;
         const method = request.method;
 
-        console.log(`[Request] Method: ${method}, Path: ${pathname}`);
-
         if (pathname.startsWith('/api/')) {
             if (method === 'OPTIONS') return handleCorsPreflight();
             try {
@@ -331,26 +329,45 @@ function pemToArrayBuffer(pem) {
     return bytes.buffer;
 }
 
+// --- 【v3.3 關鍵修正】修正 Google 認證邏輯 ---
 async function getGoogleAuthToken(serviceAccountKeyJson) {
     if (!serviceAccountKeyJson) throw new Error("GCP_SERVICE_ACCOUNT_KEY is not available.");
     const serviceAccount = JSON.parse(serviceAccountKeyJson);
     const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
-    const jwt = await new SignJWT({ scope: "https://www.googleapis.com/auth/spreadsheets" })
-        // --- 【v3.0 關鍵修正】將錯誤的 RS265 改回正確的 RS256 ---
+    
+    // 導入金鑰
+    const privateKey = await crypto.subtle.importKey(
+        "pkcs8",
+        privateKeyBuffer,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["sign"]
+    );
+
+    // 建立 JWT
+    const jwt = await new SignJWT({})
         .setProtectedHeader({ alg: "RS256", typ: "JWT" })
         .setIssuer(serviceAccount.client_email)
         .setAudience("https://oauth2.googleapis.com/token")
-        .setExpirationTime("1h")
+        .setSubject(serviceAccount.client_email) // 建議加上 subject
         .setIssuedAt()
-        .sign(await crypto.subtle.importKey("pkcs8", privateKeyBuffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]));
+        .setExpirationTime("1h")
+        .setPayload({ scope: "https://www.googleapis.com/auth/spreadsheets" })
+        .sign(privateKey);
+
+    // 請求 Access Token
     const response = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }),
+        body: new URLSearchParams({
+            grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            assertion: jwt,
+        }),
     });
     const tokens = await response.json();
     if (!tokens.access_token) {
-        throw new Error(`Failed to get access token: ${JSON.stringify(tokens)}`);
+        console.error("Token exchange failed:", tokens);
+        throw new Error("Failed to get access token from Google.");
     }
     return tokens.access_token;
 }
