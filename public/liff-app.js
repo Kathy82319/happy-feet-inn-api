@@ -137,34 +137,73 @@ document.addEventListener('DOMContentLoaded', () => {
         dateRangePickerEl.addEventListener('changeDate', handleDateChange);
     }
 
-    async function handleDateChange(e) {
-        if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
-            priceCalculationEl.textContent = '';
-            submitBookingButton.disabled = true;
-            return;
-        }
-        selectedDates = e.detail.date;
-        const dates = selectedDates.map(date => formatDate(date));
-        const [startDate, endDate] = dates;
-        availabilityResultEl.textContent = '正在查詢空房...';
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`);
-            if (!response.ok) throw new Error('查詢空房請求失敗');
-            const data = await response.json();
-            if (data.error) throw new Error(data.error);
-
-            if (data.availableCount > 0) {
-                availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${data.availableCount} 間空房。`;
-                submitBookingButton.disabled = false;
-                calculatePrice(startDate, endDate);
-            } else {
-                availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
-            }
-        } catch (error) {
-            availabilityResultEl.textContent = '✗ 查詢空房失敗，請稍後再試。';
-            console.error("Availability check failed:", error);
-        }
+   async function handleDateChange() {
+    const selectedRoomElement = document.querySelector('.room-card.selected');
+    // 如果日期變更時，使用者還沒選房型，就先不動作
+    if (!selectedRoomElement) {
+        return;
     }
+
+    const roomId = selectedRoomElement.dataset.roomId;
+    const checkInDate = document.getElementById('check-in-date').value;
+    const checkOutDate = document.getElementById('check-out-date').value;
+
+    // 確保兩個日期都有值，且退房日 > 入住日
+    if (!checkInDate || !checkOutDate || new Date(checkOutDate) <= new Date(checkInDate)) {
+        // 如果日期不合法，隱藏預訂表單並清空舊的結果
+        document.getElementById('booking-form').style.display = 'none';
+        document.getElementById('availability-result').textContent = '';
+        return;
+    }
+
+    const availabilityResultDiv = document.getElementById('availability-result');
+    const bookingForm = document.getElementById('booking-form');
+    const totalPriceElement = document.getElementById('total-price');
+    
+    // 開始查詢，顯示提示訊息
+    availabilityResultDiv.textContent = '正在查詢空房...';
+    bookingForm.style.display = 'none';
+    if (totalPriceElement) totalPriceElement.textContent = '';
+
+
+    try {
+        // --- 第一步：檢查空房 (這部分是你原有的邏輯) ---
+        const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${roomId}&startDate=${checkInDate}&endDate=${checkOutDate}`;
+        const availabilityResponse = await fetch(availabilityUrl);
+        if (!availabilityResponse.ok) throw new Error('Availability check failed');
+        const availabilityData = await availabilityResponse.json();
+
+        if (availabilityData.availableCount > 0) {
+            
+            // --- 第二步 (關鍵修正！)：取得正確價格並更新 UI ---
+            availabilityResultDiv.textContent = `太棒了！還有 ${availabilityData.availableCount} 間空房。正在計算總金額...`;
+            
+            const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${roomId}&startDate=${checkInDate}&endDate=${checkOutDate}`;
+            const priceResponse = await fetch(priceUrl);
+            if (!priceResponse.ok) throw new Error('Price calculation failed');
+            const priceData = await priceResponse.json();
+
+            // 更新最終的 UI 顯示
+            const nightCount = (new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24);
+            availabilityResultDiv.textContent = `太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
+            
+            if (totalPriceElement) {
+               totalPriceElement.textContent = `住宿 ${nightCount} 晚，總金額: TWD ${priceData.totalPrice.toLocaleString()}`;
+            }
+            
+            // 顯示預訂表單
+            bookingForm.style.display = 'block';
+
+        } else {
+            availabilityResultDiv.textContent = availabilityData.error || '抱歉，該房型在您選擇的日期已無空房。';
+            bookingForm.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('查詢失敗:', error);
+        availabilityResultDiv.textContent = '查詢時發生錯誤，請稍後再試。';
+        bookingForm.style.display = 'none';
+    }
+}
 
     function calculatePrice(startDate, endDate) {
         const start = new Date(startDate);
