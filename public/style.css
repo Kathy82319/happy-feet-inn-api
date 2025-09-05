@@ -39,47 +39,51 @@ main{padding:1rem}
     box-shadow: 0 4px 10px rgba(0,0,0,0.1);
 }
 
-/* --- 【v2.2 最終修正版】日曆區間樣式 --- */
+/* --- 【v2.2 最終權重強化版】日曆區間樣式 --- */
 
-/* 1. 處理中間日期的背景色 */
-/* `.in-range` 是當你選了起始日，滑鼠在其他日期上懸停時，中間會出現的 class */
-.datepicker-days .datepicker-cell.in-range:not(.selected):not(.start-date):not(.end-date) {
-    background-color: rgba(0, 185, 0, 0.2) !important;
+/* 我們在選擇器前面加上 `body` 來提升權重，
+  確保能覆蓋掉 datepicker-full.min.css 的預設樣式。
+*/
+
+/* 1. 處理中間日期的【懸停】背景色 */
+/* 當選擇了起始日，滑鼠在其他日期上懸停時，中間的日期會顯示這個樣式 */
+body .datepicker-days .datepicker-cell.in-range:not(.selected):not(.start-date):not(.end-date) {
+    background-color: #e6f7ec !important; /* 一個柔和的淺綠色 */
     border-radius: 0 !important;
 }
 
-/* 2. 處理起始日期的樣式 */
-.datepicker-days .datepicker-cell.selected.start-date {
+/* 2. 處理【起始日期】的最終樣式 */
+body .datepicker-days .datepicker-cell.selected.start-date {
     background-color: #00B900 !important; /* LINE 綠 */
     color: white !important;
-    border-radius: 50% 0 0 50% !important; /* 左半圓 */
+    border-radius: 50px 0 0 50px !important; /* 使用 px 確保圓角形狀穩定 */
 }
 
-/* 3. 處理結束日期的樣式 */
-.datepicker-days .datepicker-cell.selected.end-date {
+/* 3. 處理【結束日期】的最終樣式 */
+body .datepicker-days .datepicker-cell.selected.end-date {
     background-color: #00B900 !important; /* LINE 綠 */
     color: white !important;
-    border-radius: 0 50% 50% 0 !important; /* 右半圓 */
+    border-radius: 0 50px 50px 0 !important;
 }
 
-/* 4. 處理只有選擇一天的情況 (同時是起始和結束) */
-.datepicker-days .datepicker-cell.selected.start-date.end-date {
-    border-radius: 50% !important; /* 恢復成完整的圓 */
+/* 4. 處理【只選一天】的情況 (它會同時是起始和結束) */
+body .datepicker-days .datepicker-cell.selected.start-date.end-date {
+    border-radius: 50px !important; /* 恢復成完整的圓形 */
 }
 
-/* 5. 確保禁用(不可選)的日期顯示為灰色 */
-.datepicker-days .datepicker-cell.disabled,
-.datepicker-days .datepicker-cell.disabled:hover {
+/* 5. 確保禁用(不可選)的日期永遠是灰色 */
+body .datepicker-days .datepicker-cell.disabled,
+body .datepicker-days .datepicker-cell.disabled:hover {
     background-color: #f5f5f5 !important;
     color: #ccc !important;
 }
 
 /* 6. 其他 UI 優化 */
-.datepicker-controls .prev-btn,
-.datepicker-controls .next-btn {
+body .datepicker-controls .prev-btn,
+body .datepicker-controls .next-btn {
     color: #00B900 !important;
 }
-.datepicker-controls .button {
+body .datepicker-controls .button {
     color: #00B900;
     font-weight: bold;
 }
