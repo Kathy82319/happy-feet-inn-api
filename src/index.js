@@ -1,4 +1,4 @@
-// --- 【v3.6 關鍵修正】採用原生 crypto API，不再使用 jose ---
+// --- 【v3.6 最終除錯版】採用原生 crypto API，不再使用 jose ---
 
 // 輔助函式：Base64 URL 編碼
 function base64url(buffer) {
@@ -166,46 +166,9 @@ async function handleCalculatePrice(request, env) {
 }
 
 async function handleGetRooms(request, env) {
-    console.log("[API-DEBUG] /api/rooms endpoint triggered.");
-    try {
-        console.log("[API-DEBUG] Attempting to get 'rooms_data' from KV...");
-        let roomsDataJsonString = await env.ROOMS_KV.get("rooms_data"); // 以纯文字格式读取
-
-        if (!roomsDataJsonString) {
-            console.error("[API-FATAL] 'rooms_data' in KV is null or undefined.");
-            return new Response(JSON.stringify({ error: "KV value for rooms_data is null." }), { 
-                status: 500, 
-                headers: { "Content-Type": "application/json" } 
-            });
-        }
-        
-        // --- 关键的清理步骤 ---
-        // 检查字串的第一个字元的 Unicode 码是否为 BOM (U+FEFF)
-        if (roomsDataJsonString.charCodeAt(0) === 0xFEFF) {
-            console.log("[API-DEBUG] BOM character detected. Removing it...");
-            // 如果是，就从第二个字元开始取，把 BOM 去掉
-            roomsDataJsonString = roomsDataJsonString.substring(1);
-        }
-
-        console.log("[API-DEBUG] Successfully fetched and cleaned string from KV. Length:", roomsDataJsonString.length);
-
-        // 手动解析 JSON
-        const roomsData = JSON.parse(roomsDataJsonString);
-        
-        console.log(`[API-DEBUG] JSON parsed successfully. Found ${roomsData.length} rooms.`);
-        
-        return new Response(JSON.stringify(roomsData), { 
-            status: 200, 
-            headers: { "Content-Type": "application/json" } 
-        });
-
-    } catch (error) {
-        console.error("[API-FATAL] An error occurred within handleGetRooms:", error.stack);
-        return new Response(JSON.stringify({ error: "An internal error occurred while processing rooms data.", details: error.message }), { 
-            status: 500, 
-            headers: { "Content-Type": "application/json" } 
-        });
-    }
+    const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
+    if (!roomsData) return new Response(JSON.stringify({ error: "Rooms data not found." }), { status: 404, headers: { "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(roomsData), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
 async function handleSync(request, env) {
@@ -287,57 +250,22 @@ async function fetchAllBookings(env, includeRowNumber = false) {
     });
 }
 
-// --- 【v3.9 關鍵修正】在 syncAllSheetsToKV 中加入 BOM 字元清理邏輯 ---
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
     const ranges = ["rooms!A2:I", "inventory_calendar!A2:D", "pricing_rules!A2:C"];
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join("&ranges=")}`;
-    
     const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!response.ok) { 
-        const errorText = await response.text();
-        console.error(`[Sync Error] ${errorText}`);
-        throw new Error("Sync failed at Google Sheets fetch.");
-    }
-    
+    if (!response.ok) { const errorText = await response.text(); console.error(`[Sync Error] ${errorText}`); throw new Error("Sync failed"); }
     const data = await response.json();
     const [roomsRange, inventoryRange, pricingRange] = data.valueRanges;
-
-    // --- Rooms 工作表解析 ---
-    let rooms = (roomsRange.values || []).map(r => ({ 
-        id: r[0], name: r[1], description: r[2], 
-        price: parseInt(r[3], 10) || 0, 
-        fridayPrice: r[4] ? parseInt(r[4], 10) : null, 
-        saturdayPrice: r[5] ? parseInt(r[5], 10) : null, 
-        totalQuantity: parseInt(r[6], 10) || 0, 
-        imageUrl: r[7], 
-        isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" 
-    })).filter(r => r.id && r.isActive);
-
-    // 將解析後的 rooms 物件轉換回 JSON 字串
-    let roomsJsonString = JSON.stringify(rooms);
-
-    // --- 關鍵的清理步驟 ---
-    // 檢查字串的第一个字元的 Unicode 碼是否為 BOM (U+FEFF)
-    if (roomsJsonString.charCodeAt(0) === 0xFEFF) {
-        console.log("[SYNC-DEBUG] BOM character detected in rooms data. Removing it...");
-        // 如果是，就从第二个字元开始取，把 BOM 去掉
-        roomsJsonString = roomsJsonString.substring(1);
-    }
-    
-    // 將清理乾淨的 JSON 字串存入 KV
-    await env.ROOMS_KV.put("rooms_data", roomsJsonString);
-    console.log("[SYNC-DEBUG] Cleaned 'rooms_data' stored in KV successfully.");
-
-
-    // --- Inventory Calendar & Pricing Rules (維持原樣) ---
+    const rooms = (roomsRange.values || []).map(r => ({ id: r[0], name: r[1], description: r[2], price: parseInt(r[3], 10) || 0, fridayPrice: r[4] ? parseInt(r[4], 10) : null, saturdayPrice: r[5] ? parseInt(r[5], 10) : null, totalQuantity: parseInt(r[6], 10) || 0, imageUrl: r[7], isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" })).filter(r => r.id && r.isActive);
+    await env.ROOMS_KV.put("rooms_data", JSON.stringify(rooms));
     const inventoryCalendar = {};
-    (inventoryRange.values || []).forEach(r => { /* ... */ });
+    (inventoryRange.values || []).forEach(r => { const [date, roomId, inventory, close] = r; if (!date || !roomId) return; if (!inventoryCalendar[date]) inventoryCalendar[date] = {}; inventoryCalendar[date][roomId] = { inventory: inventory ? parseInt(inventory, 10) : null, isClosed: (close || "FALSE").toUpperCase() === "TRUE" }; });
     await env.ROOMS_KV.put("inventory_calendar", JSON.stringify(inventoryCalendar));
-
     const pricingRules = {};
-    (pricingRange.values || []).forEach(r => { /* ... */ });
+    (pricingRange.values || []).forEach(r => { const [date, roomId, price] = r; if (!date || !roomId || !price) return; if (!pricingRules[date]) pricingRules[date] = {}; pricingRules[date][roomId] = parseInt(price, 10); });
     await env.ROOMS_KV.put("pricing_rules", JSON.stringify(pricingRules));
 }
 

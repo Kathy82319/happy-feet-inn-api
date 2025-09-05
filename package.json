@@ -7,11 +7,6 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev"
   },
-  "dependencies": {
-    "jose": "^5.0.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.21.4",
-    "wrangler": "^4.0.0"
-  }
+"dependencies": {
+  "hono": "^4.4.12"
 }
