@@ -1,3 +1,4 @@
+
 document.addEventListener('DOMContentLoaded', () => {
     const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
@@ -32,40 +33,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(err => console.error("Get profile failed", err));
     }
 
-    // --- 【v3.2 關鍵偵錯】強化 fetchRooms 的錯誤回報 ---
+    // --- 【v3.7 關鍵修正】強化 fetchRooms 的前端錯誤處理 ---
     async function fetchRoomsAndThenBookings() {
         try {
-            console.log('[DEBUG] Attempting to fetch /api/rooms...');
             const response = await fetch(`${API_BASE_URL}/api/rooms`);
-            
-            // 無論成功失敗，都先印出狀態碼
-            console.log('[DEBUG] /api/rooms response status:', response.status);
-
             if (!response.ok) {
-                // 如果 API 回傳錯誤，嘗試讀取並印出錯誤內文
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch rooms. Status: ${response.status}, Body: ${errorText}`);
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Failed to fetch rooms with status: ${response.status}`);
             }
-
             const rooms = await response.json();
-            console.log('[DEBUG] /api/rooms response data:', rooms); // 印出收到的房型資料
-
             if (!rooms || rooms.length === 0) {
-                console.warn('[WARN] /api/rooms returned empty or null data. Using fallback.');
+                throw new Error("Received empty room data from server.");
             }
-
             rooms.forEach(room => {
                 roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
             });
-            
-            console.log('[DEBUG] roomDataCache populated successfully.');
-            fetchMyBookings(); // 房型資料準備好後，才去抓訂單
-
-        } catch (error) {
-            // 這個 catch 會捕捉到所有 fetch 過程中的錯誤，並印出詳細資訊
-            console.error('CRITICAL: fetchRoomsAndThenBookings function failed:', error);
-            // 即使房型資料載入失敗，還是嘗試載入訂單，讓使用者至少能看到東西
             fetchMyBookings();
+        } catch (error) {
+            console.error('CRITICAL: Could not fetch and process room data:', error);
+            // 在畫面上顯示一個對使用者友善的錯誤訊息
+            bookingListDiv.innerHTML = `<p class="error-message">無法載入房型對照資料，導致訂單資訊顯示不完整。<br>請稍後再試或聯繫客服人員。</p>`;
+            loadingSpinner.classList.add('hidden');
+            mainContent.classList.remove('hidden');
         }
     }
     
