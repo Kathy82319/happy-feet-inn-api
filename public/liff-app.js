@@ -8,9 +8,6 @@ function formatDate(date) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 程式碼開頭先印出一個日誌，確保 JS 檔案有被正確載入 ---
-    console.log("[DEBUG] liff-app.js Loaded Successfully!");
-
     const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
@@ -40,10 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!liff.isLoggedIn()) liff.login();
                 else getUserProfile();
             })
-            .catch(err => {
-                console.error("LIFF Initialization failed", err);
-                alert("LIFF 初始化失敗，請稍後再試。");
-            });
+            .catch(err => console.error("LIFF Initialization failed", err));
     }
 
     function getUserProfile() {
@@ -58,29 +52,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function fetchRooms() {
-        console.log("[DEBUG] Starting to fetch rooms..."); // 追蹤 fetchRooms 是否被呼叫
-        document.querySelector('#loading-spinner p').textContent = '正在載入房型資料...';
-        loadingSpinner.classList.remove('hidden');
         fetch(`${API_BASE_URL}/api/rooms`)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 return response.json();
             })
             .then(rooms => {
-                console.log(`[DEBUG] Successfully fetched ${rooms.length} rooms.`); // 確認收到幾間房
                 roomListDiv.innerHTML = '';
-                if (rooms.length === 0) {
-                    roomListDiv.innerHTML = '<p>目前沒有可預訂的房型。</p>';
-                } else {
-                    rooms.forEach(room => roomListDiv.appendChild(createRoomCard(room)));
-                }
+                rooms.forEach(room => roomListDiv.appendChild(createRoomCard(room)));
                 loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
             })
             .catch(error => {
                 console.error('Fetching rooms failed:', error);
-                mainContent.classList.remove('hidden');
                 loadingSpinner.classList.add('hidden');
+                mainContent.classList.remove('hidden');
                 roomListDiv.innerHTML = '<p>載入房型資料失敗，請稍後再試。</p>';
             });
     }
@@ -97,19 +83,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="cta-button">立即預訂</button>
             </div>
         `;
-        const bookingButton = card.querySelector('.cta-button');
-        bookingButton.addEventListener('click', () => {
-            // 這個日誌我們已經成功看到了，但先留著
-            console.log(`[SUCCESS] Button clicked for room: ${room.name}`);
-            openBookingModal(room);
-        });
+        card.querySelector('.cta-button').addEventListener('click', () => openBookingModal(room));
         return card;
     }
 
-
-    // --- 【v4.1 關鍵偵錯】在 openBookingModal 中加入詳細步驟日誌 ---
     function openBookingModal(room) {
-        console.log("[DEBUG] Step 1: `openBookingModal` function started.");
         selectedRoom = room;
         selectedDates = [];
         finalTotalPrice = 0;
@@ -121,24 +99,8 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBookingButton.textContent = '確認訂房';
         submitBookingButton.style.backgroundColor = ''; 
         guestPhoneInput.value = '';
-        
-        console.log("[DEBUG] Step 2: About to initialize datepicker...");
-        try {
-            initializeDatepicker();
-            console.log("[DEBUG] Step 3: Datepicker initialized successfully.");
-        } catch (error) {
-            console.error("[FATAL] Datepicker initialization failed!", error);
-            // 如果日期選擇器初始化失敗，我們至少要讓 Modal 顯示出來並提示錯誤
-            availabilityResultEl.textContent = '錯誤：日期選擇器載入失敗！';
-        }
-
-        console.log("[DEBUG] Step 4: About to remove 'hidden' class from modal.");
+        initializeDatepicker();
         bookingModal.classList.remove('hidden');
-        console.log("[DEBUG] Step 5: 'hidden' class removed. Modal should be visible now.");
-
-        // 檢查 modal 的最終計算樣式
-        const modalStyle = window.getComputedStyle(bookingModal);
-        console.log(`[INFO] Final modal computed styles -> display: ${modalStyle.display}, z-index: ${modalStyle.zIndex}, position: ${modalStyle.position}`);
     }
 
     function closeBookingModal() {
@@ -150,7 +112,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function initializeDatepicker() {
-        // ... (以下所有函式維持不變)
         if (datepicker) datepicker.destroy();
         const Datepicker = window.Datepicker;
         if (!Datepicker) {
@@ -185,7 +146,10 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedDates.sort((a, b) => a - b);
         const dates = selectedDates.map(date => formatDate(date));
         const [startDate, endDate] = dates;
-        datepicker.setDates(selectedDates);
+
+        // --- 【v4.2 關鍵修正】將錯誤的 setDates 改為正確的 setDate ---
+        datepicker.setDate(selectedDates);
+        
         availabilityResultEl.textContent = '正在查詢空房與價格...';
 
         try {

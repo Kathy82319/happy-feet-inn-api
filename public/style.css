@@ -18,7 +18,6 @@ main{padding:1rem}
 .cta-button:hover{background-color:#e65a4e}
 .cta-button:disabled{background-color:#ccc;cursor:not-allowed}
 .modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:flex;justify-content:center;align-items:center;z-index:1000;opacity:1;transition:opacity .3s ease}
-.modal-content{background:#fff;padding:2rem;border-radius:8px;width:90%;max-width:400px;position:relative;box-shadow:0 5px 15px rgba(0,0,0,.3)}
 .close-button{position:absolute;top:10px;right:15px;background:0 0;border:none;font-size:1.8rem;color:#aaa;cursor:pointer;transition:color .2s}
 .close-button:hover{color:#333}
 .form-group{margin-bottom:1.5rem}
@@ -232,32 +231,61 @@ header h1 {
     margin-bottom: 10px;
 }
 
-/* --- 【v4.1 暴力級】強制 Modal 顯示樣式 --- */
+/* --- 【v4.2 最終穩健版】訂房視窗樣式 --- */
 
+/* 這是視窗的黑色半透明背景 */
 #booking-modal {
-    /* 使用 fixed 定位，脫離文件流，確保它在最上層 */
-    position: fixed !important; 
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.6);
     
-    /* 給一個超高的 z-index，確保它不會被任何東西擋住 */
-    z-index: 9999 !important; 
-    
-    /* 精確定位到畫面正中央 */
-    left: 50% !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
-    
-    /* 設定一個可見的寬高和背景 */
-    width: 90% !important;
-    max-width: 500px !important;
-    background-color: white !important; /* 確保背景不是透明的 */
-    
-    /* 確保 overflow 和邊框正常 */
-    border: 1px solid #ccc;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    overflow-y: auto;
+    /* 使用 Flexbox 將內容垂直和水平置中 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    /* 動畫效果 */
+    opacity: 1;
+    transition: opacity 0.3s ease;
 }
 
-/* 強制 .hidden class 使用 display: none，確保元素完全消失不佔位 */
+/* 這是視窗的主體內容框 */
+#booking-modal .modal-content {
+    background-color: #fff;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.25);
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh; /* 避免在小螢幕上超出畫面 */
+    overflow-y: auto; /* 如果內容太多，允許滾動 */
+    position: relative; /* 為了關閉按鈕的定位 */
+}
+
+/* 關閉按鈕的樣式 */
+#booking-modal .close-button {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    font-size: 28px;
+    font-weight: bold;
+    color: #aaa;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+#booking-modal .close-button:hover {
+    color: #333;
+}
+
+/* 隱藏狀態 */
 #booking-modal.hidden {
-    display: none !important;
+    /* display: none; */
+    /* 改用透明度和事件穿透，讓動畫更流暢 */
+    opacity: 0;
+    pointer-events: none;
 }
