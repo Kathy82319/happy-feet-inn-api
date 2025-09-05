@@ -120,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function initializeDatepicker() {
+        function initializeDatepicker() {
         if (datepicker) datepicker.destroy();
         const Datepicker = window.Datepicker;
         if (!Datepicker) {
@@ -133,7 +133,9 @@ document.addEventListener('DOMContentLoaded', () => {
             autohide: true,
             todayHighlight: true,
             minDate: new Date(),
-            maxNumberOfDates: 2,
+            // --- 【關鍵修正】啟用 'range' 選項，並移除 'maxNumberOfDates' ---
+            range: true, // 啟用日期範圍選擇
+            // maxNumberOfDates: 2, // 移除這個，讓它能選擇連續區間
             buttonClass: 'btn',
         });
         dateRangePickerEl.addEventListener('changeDate', handleDateChange);
