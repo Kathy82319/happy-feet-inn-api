@@ -141,53 +141,75 @@ function initializeDatepicker() {
 }
 
     // --- 【修正2】重寫整個 handleDateChange 函式，整合空房查詢與價格計算 ---
-    async function handleDateChange(e) {
-        // 重置狀態
-        priceCalculationEl.textContent = '';
-        submitBookingButton.disabled = true;
+   // 在 public/liff-app.js 中
+// 請用這個版本完整取代你現有的 handleDateChange 函式
 
-        if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
-            return; // 如果日期選擇不完整，直接返回
-        }
+async function handleDateChange(e) {
+    // --- 每次日期變更時，先清除之前手動添加的樣式 ---
+    document.querySelectorAll('.range-middle-custom').forEach(el => {
+        el.classList.remove('range-middle-custom');
+    });
 
-        selectedDates = e.detail.date;
-        const dates = selectedDates.map(date => formatDate(date));
-        const [startDate, endDate] = dates;
-        availabilityResultEl.textContent = '正在查詢空房與價格...';
+    // 重置狀態
+    priceCalculationEl.textContent = '';
+    submitBookingButton.disabled = true;
 
-        try {
-            // 第一步：查詢空房
-            const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
-            const availabilityResponse = await fetch(availabilityUrl);
-            if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
-            const availabilityData = await availabilityResponse.json();
-            if (availabilityData.error) throw new Error(availabilityData.error);
-
-            if (availabilityData.availableCount > 0) {
-                // 第二步：如果還有空房，就去後端計算正確價格
-                const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
-                const priceResponse = await fetch(priceUrl);
-                if (!priceResponse.ok) throw new Error('價格計算失敗');
-                const priceData = await priceResponse.json();
-
-                // 更新全域變數中的總價
-                finalTotalPrice = priceData.totalPrice; 
-
-                // 更新 UI 顯示
-                const nights = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
-                availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
-                priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
-                
-                // 所有檢查都通過，啟用訂房按鈕
-                submitBookingButton.disabled = false;
-            } else {
-                availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
-            }
-        } catch (error) {
-            availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
-            console.error("Availability or Price check failed:", error);
-        }
+    if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
+        return; // 如果日期選擇不完整，直接返回
     }
+
+    selectedDates = e.detail.date;
+    const dates = selectedDates.map(date => formatDate(date));
+    const [startDate, endDate] = dates;
+    availabilityResultEl.textContent = '正在查詢空房與價格...';
+
+    try {
+        // 第一步：查詢空房
+        const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+        const availabilityResponse = await fetch(availabilityUrl);
+        if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
+        const availabilityData = await availabilityResponse.json();
+        if (availabilityData.error) throw new Error(availabilityData.error);
+
+        if (availabilityData.availableCount > 0) {
+            // 第二步：如果還有空房，就去後端計算正確價格
+            const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+            const priceResponse = await fetch(priceUrl);
+            if (!priceResponse.ok) throw new Error('價格計算失敗');
+            const priceData = await priceResponse.json();
+
+            finalTotalPrice = priceData.totalPrice;
+
+            const nights = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
+            availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
+            priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
+            
+            submitBookingButton.disabled = false;
+
+            // --- 【v2.3 關鍵修正！】手動為中間日期添加自訂 class ---
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+            let currentDate = new Date(startDateObj);
+            currentDate.setDate(currentDate.getDate() + 1); // 從起始日的隔天開始
+
+            while (currentDate < endDateObj) {
+                const dateString = formatDate(currentDate);
+                const cellSelector = `.datepicker-cell[data-date='${new Date(dateString).getTime()}']`;
+                const cellElement = document.querySelector(cellSelector);
+                if (cellElement) {
+                    cellElement.classList.add('range-middle-custom');
+                }
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+        } else {
+            availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
+        }
+    } catch (error) {
+        availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
+        console.error("Availability or Price check failed:", error);
+    }
+}
 
     // --- 【修正3】移除舊的 calculatePrice 函式 ---
     // (整個函式被刪除，因為它的邏輯已經整合到 handleDateChange 裡面了)
