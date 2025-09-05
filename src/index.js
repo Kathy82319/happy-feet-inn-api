@@ -1,7 +1,8 @@
 import { SignJWT } from 'jose';
 
-// --- 輔助函式 ---
+// 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
 function formatDate(date) {
+    if (!(date instanceof Date) || isNaN(date)) return null;
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
@@ -16,9 +17,11 @@ export default {
     const method = request.method;
 
     console.log(`[Request] Method: ${method}, Path: ${pathname}`);
- 
+
     if (pathname.startsWith('/api/')) {
-      if (method === 'OPTIONS') return handleCorsPreflight();
+      if (method === 'OPTIONS') {
+        return handleCorsPreflight();
+      }
 
       try {
         let response;
@@ -33,10 +36,13 @@ export default {
         } else {
           response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
         }
-
+        
         const newHeaders = new Headers(response.headers);
         newHeaders.set('Access-Control-Allow-Origin', '*');
-        return new Response(response.body, { status: response.status, headers: newHeaders });
+        return new Response(response.body, {
+          status: response.status,
+          headers: newHeaders,
+        });
 
       } catch (error) {
         console.error(`[Error] Unhandled API error on ${method} ${pathname}:`, error.stack);
@@ -47,6 +53,7 @@ export default {
       }
     }
 
+    // 前端靜態檔案伺服器
     return env.ASSETS.fetch(request);
   },
 
@@ -62,25 +69,6 @@ export default {
 };
 
 // --- API 處理函式 ---
-async function handleGetRooms(request, env) { /* ... */ }
-async function handleSync(request, env) { /* ... */ }
-async function handleGetAvailability(request, env) { /* ... */ }
-async function handleCreateBooking(request, env) { /* ... */ }
-function handleCorsPreflight() { /* ... */ }
-
-// --- 核心商業邏輯 ---
-async function syncAllSheetsToKV(env) { /* ... */ }
-async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) { /* ... */ }
-async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) { /* ... */ }
-async function writeBookingToSheet(env, booking) { /* ... */ }
-async function fetchAllBookings(env) { /* ... */ }
-
-// --- Google 驗證輔助函式 ---
-function pemToArrayBuffer(pem) { /* ... */ }
-async function getGoogleAuthToken(serviceAccountKeyJson) { /* ... */ }
-
-// --- 【重要】下方是所有函式的完整、正確實作 ---
-
 async function handleGetRooms(request, env) {
     const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
     if (!roomsData) {
@@ -125,6 +113,8 @@ function handleCorsPreflight() {
     });
 }
 
+
+// --- 核心商業邏輯 ---
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
@@ -138,7 +128,7 @@ async function syncAllSheetsToKV(env) {
     }
     const data = await response.json();
     const [roomsData, inventoryData, pricingData] = data.valueRanges;
-
+    
     const rooms = (roomsData.values || []).map(row => ({
         id: row[0], name: row[1], description: row[2],
         price: parseInt(row[3], 10) || 0,
@@ -177,9 +167,9 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
     const inventoryCalendar = await env.ROOMS_KV.get("inventory_calendar", "json") || {};
     const targetRoom = allRooms.find(room => room.id === roomId);
     if (!targetRoom) return { error: "Room not found", availableCount: 0 };
-
+    
     const bookings = await fetchAllBookings(env);
-
+    
     let minAvailableCount = Infinity;
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
@@ -193,25 +183,25 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
             minAvailableCount = 0;
             break;
         }
-
+        
         let dayTotalQuantity = targetRoom.totalQuantity;
         if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
             dayTotalQuantity = dayOverrides.inventory;
         }
-
+        
         const occupiedCount = bookings.filter(b => {
             const checkIn = new Date(b.checkInDate);
             const checkOut = new Date(b.checkOutDate);
             return b.roomId === roomId && b.status !== "CANCELLED" && currentDate >= checkIn && currentDate < checkOut;
         }).length;
-
+        
         const available = dayTotalQuantity - occupiedCount;
         if (available < minAvailableCount) {
             minAvailableCount = available;
         }
         currentDate.setDate(currentDate.getDate() + 1);
     }
-
+    
     const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
     return {
         roomId, startDate: startDateStr, endDate: endDateStr,
@@ -224,7 +214,7 @@ async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
     const pricingRules = await env.ROOMS_KV.get("pricing_rules", "json") || {};
     const targetRoom = allRooms.find(room => room.id === roomId);
     if (!targetRoom) throw new Error("Room not found for price calculation.");
-
+    
     let totalPrice = 0;
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
@@ -240,11 +230,11 @@ async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
         } else if (dayOfWeek === 6 && targetRoom.saturdayPrice) {
             dailyPrice = targetRoom.saturdayPrice;
         }
-
+        
         if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
             dailyPrice = pricingRules[dateString][roomId];
         }
-
+        
         totalPrice += dailyPrice;
         currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -293,6 +283,8 @@ async function fetchAllBookings(env) {
     }));
 }
 
+
+// --- Google 驗證輔助函式 ---
 function pemToArrayBuffer(pem) {
     const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s/g, "");
     const binary_string = atob(b64);
