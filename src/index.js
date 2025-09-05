@@ -16,7 +16,6 @@ export default {
         const pathname = url.pathname;
         const method = request.method;
 
-        // 為了偵錯，我們暫時保留這個日誌
         console.log(`[Request] Method: ${method}, Path: ${pathname}`);
 
         if (pathname.startsWith('/api/')) {
@@ -27,6 +26,7 @@ export default {
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
                 else if (pathname === '/api/bookings' && method === 'POST') response = await handleCreateBooking(request, env);
                 else if (pathname === '/api/availability' && method === 'GET') response = await handleGetAvailability(request, env);
+                // --- 【關鍵修正！】在這裡加上 /api/calculate-price 的路由 ---
                 else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
@@ -55,6 +55,26 @@ export default {
 
 
 // --- API 處理函式 ---
+
+// --- 【關鍵修正！】新增 handleCalculatePrice 函式來處理前端請求 ---
+async function handleCalculatePrice(request, env) {
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get("roomId");
+    const startDate = url.searchParams.get("startDate");
+    const endDate = url.searchParams.get("endDate");
+
+    if (!roomId || !startDate || !endDate) {
+        return new Response(JSON.stringify({ error: "Missing required parameters for price calculation" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+
+    // 直接呼叫我們已經寫好的內部商業邏輯函式
+    const totalPrice = await calculateTotalPrice(env, roomId, startDate, endDate);
+    
+    // 將計算結果包裝成 JSON 回傳給前端
+    return new Response(JSON.stringify({ totalPrice }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+
 async function handleGetRooms(request, env) {
     const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
     if (!roomsData) {
@@ -99,7 +119,7 @@ function handleCorsPreflight() {
     });
 }
 
-// --- 核心商業邏輯 ---
+// --- 核心商業邏輯 (以下不變) ---
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
@@ -128,7 +148,6 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
   console.log(`[AV-DEBUG] RoomID: ${roomId}, Start: ${startDateStr}, End: ${endDateStr}`);
 
   const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
-  // 【關鍵修正】確保我們正確地讀取 inventoryCalendar
   const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
 
   console.log("[AV-DEBUG] Fetched inventory calendar from KV:", JSON.stringify(inventoryCalendar, null, 2));
@@ -151,7 +170,6 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
     const dateString = formatDate(currentDate);
     console.log(`\n[AV-DEBUG] >> Checking date: ${dateString}`);
 
-    // 【關鍵修正】確保我們使用正確的變數 dayOverrides
     const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
 
     if (dayOverrides) console.log(`[AV-DEBUG] Found override for this date:`, dayOverrides);
@@ -199,7 +217,7 @@ async function writeBookingToSheet(env, booking) {
     if (availability.availableCount <= 0) {
         throw new Error("Sorry, the room is no longer available for the selected dates.");
     }
-    const finalPrice = await calculateTotalPrice(env, booking.roomId, booking.checkInDate, booking.checkOutDate);
+    // 【修正】這裡直接使用前端傳來的 totalPrice，不再重新計算
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
     const range = "bookings!A:K";
@@ -211,7 +229,7 @@ async function writeBookingToSheet(env, booking) {
         booking.lineUserId || "", booking.lineDisplayName || "",
         booking.roomId, booking.checkInDate, booking.checkOutDate,
         booking.guestName, booking.guestPhone || "",
-        finalPrice,
+        booking.totalPrice, // 直接使用前端傳來的價格
         "PENDING_PAYMENT",
     ];
     const response = await fetch(url, {
@@ -248,6 +266,7 @@ async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
         console.log(`\n[PRICE-DEBUG] >> Checking date: ${dateString} (Day of week: ${dayOfWeek})`);
         console.log(`[PRICE-DEBUG] Base price: ${dailyPrice}`);
 
+        // 【修正】修正週末價的判斷邏輯，確保 null 或 0 不會被採用
         if (dayOfWeek === 5 && targetRoom.fridayPrice) {
             dailyPrice = targetRoom.fridayPrice;
             console.log(`[PRICE-DEBUG] Friday price applied: ${dailyPrice}`);
