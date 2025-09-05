@@ -15,7 +15,7 @@ export default {
         const url = new URL(request.url);
         const pathname = url.pathname;
         const method = request.method;
-
+ 
         console.log(`[Request] Method: ${method}, Path: ${pathname}`);
 
         if (pathname.startsWith('/api/')) {
