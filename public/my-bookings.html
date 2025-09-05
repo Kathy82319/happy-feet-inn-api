@@ -1,39 +1,194 @@
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的訂單 - 快樂腳旅棧</title>
-    <link rel="stylesheet" href="style.css?v=1.3">
-</head>
-<body>
-    <div id="app">
-        <header>
-            <h1>快樂腳旅棧</h1>
-            <div id="user-profile" class="hidden">
-                <img id="user-picture" src="" alt="User Picture">
-                <span id="user-name"></span>
+document.addEventListener('DOMContentLoaded', () => {
+    const LIFF_ID = "2008032417-DPqYdL7p"; // 請確認與主頁的 LIFF ID 相同
+    const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
+
+    let lineProfile = {};
+    const roomDataCache = {}; // 用來快取房型名稱與圖片
+
+    const loadingSpinner = document.getElementById('loading-spinner');
+    const userProfileDiv = document.getElementById('user-profile');
+    const userNameSpan = document.getElementById('user-name');
+    const userPictureImg = document.getElementById('user-picture');
+    const mainContent = document.getElementById('main-content');
+    const bookingListDiv = document.getElementById('booking-list');
+    const noBookingMessage = document.getElementById('no-booking-message');
+
+    function main() {
+        liff.init({ liffId: LIFF_ID })
+            .then(() => {
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                } else {
+                    getUserProfile();
+                }
+            })
+            .catch(err => {
+                console.error("LIFF Initialization failed", err);
+                alert("LIFF 初始化失敗，請稍後再試。");
+            });
+    }
+
+    function getUserProfile() {
+        liff.getProfile().then(profile => {
+            lineProfile = profile;
+            userNameSpan.textContent = profile.displayName;
+            userPictureImg.src = profile.pictureUrl;
+            userProfileDiv.classList.remove('hidden');
+            fetchRoomsAndThenBookings(); // 先載入房型資料，再載入訂單
+        }).catch(err => console.error("Get profile failed", err));
+    }
+
+    async function fetchRoomsAndThenBookings() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/rooms`);
+            const rooms = await response.json();
+            rooms.forEach(room => {
+                roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
+            });
+            fetchMyBookings(); // 房型資料準備好後，才去抓訂單
+        } catch (error) {
+            console.error('Fetching rooms failed:', error);
+            fetchMyBookings();
+        }
+    }
+
+    async function fetchMyBookings() {
+        loadingSpinner.classList.remove('hidden');
+        mainContent.classList.add('hidden');
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/my-bookings?lineUserId=${lineProfile.userId}`);
+            if (!response.ok) throw new Error('無法取得訂單資料');
+            const bookings = await response.json();
+
+            bookingListDiv.innerHTML = ''; 
+
+            if (bookings.length === 0) {
+                noBookingMessage.classList.remove('hidden');
+            } else {
+                noBookingMessage.classList.add('hidden');
+                
+                // --- 【v3.1 關鍵修正】自定義排序邏輯 ---
+                bookings.sort((a, b) => {
+                    // 規則1：如果 a 是 CANCELLED 而 b 不是，a 排在後面
+                    if (a.status === 'CANCELLED' && b.status !== 'CANCELLED') {
+                        return 1;
+                    }
+                    // 規則2：如果 b 是 CANCELLED 而 a 不是，b 排在後面
+                    if (b.status === 'CANCELLED' && a.status !== 'CANCELLED') {
+                        return -1;
+                    }
+                    // 規則3：如果兩個都是 CANCELLED 或都不是，則按入住日期由新到舊排序
+                    return new Date(b.checkInDate) - new Date(a.checkInDate);
+                });
+
+                bookings.forEach(booking => {
+                    const bookingCard = createBookingCard(booking);
+                    bookingListDiv.appendChild(bookingCard);
+                });
+            }
+        } catch (error) {
+            console.error('Fetching bookings failed:', error);
+            bookingListDiv.innerHTML = '<p class="error-message">載入訂單失敗，請稍後再試。</p>';
+        } finally {
+            loadingSpinner.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+        }
+    }
+
+    // --- 【v3.1 關鍵修正】將狀態文字中文化 ---
+    function getStatusText(status) {
+        switch (status) {
+            case 'PENDING_PAYMENT':
+                return '待付款';
+            case 'CONFIRMED':
+                return '已確認';
+            case 'CANCELLED':
+                return '已取消';
+            case 'COMPLETED':
+                return '已完成';
+            default:
+                return status; // 如果有其他狀態，直接顯示
+        }
+    }
+
+    function createBookingCard(booking) {
+        const card = document.createElement('div');
+        // 如果訂單已取消，額外添加一個 'cancelled-card' class
+        card.className = `booking-card ${booking.status === 'CANCELLED' ? 'cancelled-card' : ''}`;
+        card.dataset.bookingId = booking.bookingId;
+
+        const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId, imageUrl: 'https://placehold.co/600x400?text=No+Image' };
+        const nights = (new Date(booking.checkOutDate) - new Date(booking.checkInDate)) / (1000 * 60 * 60 * 24);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const checkInDate = new Date(booking.checkInDate);
+        const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+        const isCancellable = diffDays >= 2 && booking.status !== 'CANCELLED';
+
+        const statusText = getStatusText(booking.status); // 獲取中文狀態
+
+        card.innerHTML = `
+            <div class="booking-card-header">
+                <h3>${roomInfo.name}</h3>
+                <span class="status-badge status-${(booking.status || '').toLowerCase()}">${statusText}</span>
             </div>
-            <nav class="main-nav">
-                <a href="index.html" class="nav-link">線上訂房</a>
-                <a href="my-bookings.html" class="nav-link active">我的訂單</a>
-            </nav>
-        </header>
+            <div class="booking-card-body">
+                <img src="${roomInfo.imageUrl}" alt="${roomInfo.name}">
+                <div class="booking-details">
+                    <p><strong>訂單編號:</strong> ${booking.bookingId}</p>
+                    <p><strong>入住日期:</strong> ${booking.checkInDate}</p>
+                    <p><strong>退房日期:</strong> ${booking.checkOutDate} (${nights}晚)</p>
+                    <p><strong>訂房大名:</strong> ${booking.guestName}</p>
+                    <p><strong>訂單總額:</strong> NT$ ${booking.totalPrice.toLocaleString()}</p>
+                </div>
+            </div>
+            <div class="booking-card-footer">
+                ${isCancellable ? '<button class="cta-button cancel-button">取消此訂單</button>' : ''}
+            </div>
+        `;
         
-        <main id="main-content" class="hidden">
-            <div id="booking-list-container">
-                <div id="booking-list"></div>
-                <p id="no-booking-message" class="hidden">您目前沒有任何訂單紀錄。</p>
-            </div>
-        </main>
+        if (isCancellable) {
+            card.querySelector('.cancel-button').addEventListener('click', () => handleCancelBooking(booking.bookingId, checkInDate));
+        }
 
-        <div id="loading-spinner">
-            <div class="spinner"></div>
-            <p>正在載入您的訂單...</p>
-        </div>
-    </div>
+        return card;
+    }
 
-    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <script src="my-bookings.js?v=1.0"></script>
-</body>
-</html>
+    async function handleCancelBooking(bookingId, checkInDate) {
+        const confirmed = confirm("您確定要取消這筆訂單嗎？此操作無法復原。");
+        if (!confirmed) return;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
+
+        if (diffDays < 2) {
+            alert("訂房當日(或前一日)不可取消，若有問題請洽客服人員。");
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/bookings/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: bookingId,
+                    lineUserId: lineProfile.userId
+                }),
+            });
+            const result = await response.json();
+            if (!response.ok || result.error) throw new Error(result.error || '取消訂單失敗');
+
+            alert('訂單已成功取消！');
+            // 重新載入所有訂單，以確保排序和狀態都正確更新
+            fetchMyBookings();
+            
+        } catch (error) {
+            console.error('Cancel booking failed:', error);
+            alert(`取消失敗：${error.message}`);
+        }
+    }
+
+    main();
+});

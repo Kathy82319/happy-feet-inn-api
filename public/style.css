@@ -275,3 +275,16 @@ header h1 {
     opacity: 0;
     pointer-events: none;
 }
+
+
+
+/*【v3.1 新增】已取消訂單的特殊樣式 */
+.booking-card.cancelled-card {
+    opacity: 0.6; /* 讓整張卡片變淡 */
+    background-color: #f9f9f9; /* 給一個略灰的背景 */
+}
+
+/* 也可以讓變淡的效果更明顯 */
+.booking-card.cancelled-card .booking-card-body img {
+    filter: grayscale(80%); /* 讓圖片變灰階 */
+}
