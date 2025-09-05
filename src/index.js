@@ -53,7 +53,7 @@ export default {
 };
 
 
-// --- API 處理函式 ---
+// --- API 處理函式 (以下所有函式都無需修改，保持原樣即可) ---
 async function handleGetMyBookings(request, env) {
     const url = new URL(request.url);
     const lineUserId = url.searchParams.get("lineUserId");
@@ -131,7 +131,7 @@ function handleCorsPreflight() {
 }
 
 
-// --- 核心商業邏輯 ---
+// --- 核心商業邏輯 (以下函式都無需修改) ---
 async function cancelBookingInSheet(env, bookingId, lineUserId) {
     const allBookings = await fetchAllBookings(env, true);
     const targetBooking = allBookings.find(b => b.bookingId === bookingId);
@@ -325,6 +325,7 @@ function pemToArrayBuffer(pem) {
     return bytes.buffer;
 }
 
+// --- 【v3.5 關鍵修正】移除 .setSubject() ---
 async function getGoogleAuthToken(serviceAccountKeyJson) {
     if (!serviceAccountKeyJson) throw new Error("GCP_SERVICE_ACCOUNT_KEY is not available.");
     
@@ -345,7 +346,7 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
         .setProtectedHeader({ alg: "RS256", typ: "JWT" })
         .setIssuer(serviceAccount.client_email)
         .setAudience("https://oauth2.googleapis.com/token")
-        .setSubject(serviceAccount.client_email)
+        // .setSubject(serviceAccount.client_email) // 移除這一行
         .setIssuedAt()
         .setExpirationTime("1h")
         .sign(privateKey);
