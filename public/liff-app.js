@@ -11,7 +11,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
-    let lineProfile = {}, selectedRoom = {}, datepicker;
+    // --- 【修正1】新增一個變數來儲存從後端計算回來的正確總價 ---
+    let lineProfile = {}, selectedRoom = {}, datepicker, finalTotalPrice = 0;
     let selectedDates = []; 
 
     const loadingSpinner = document.getElementById('loading-spinner');
@@ -99,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function openBookingModal(room) {
         selectedRoom = room;
         selectedDates = [];
+        finalTotalPrice = 0; // 重置價格
         modalRoomName.textContent = `預訂房型： ${room.name}`;
         bookingErrorEl.textContent = '';
         priceCalculationEl.textContent = '';
@@ -137,135 +139,106 @@ document.addEventListener('DOMContentLoaded', () => {
         dateRangePickerEl.addEventListener('changeDate', handleDateChange);
     }
 
-   async function handleDateChange() {
-    const selectedRoomElement = document.querySelector('.room-card.selected');
-    // 如果日期變更時，使用者還沒選房型，就先不動作
-    if (!selectedRoomElement) {
-        return;
-    }
+    // --- 【修正2】重寫整個 handleDateChange 函式，整合空房查詢與價格計算 ---
+    async function handleDateChange(e) {
+        // 重置狀態
+        priceCalculationEl.textContent = '';
+        submitBookingButton.disabled = true;
 
-    const roomId = selectedRoomElement.dataset.roomId;
-    const checkInDate = document.getElementById('check-in-date').value;
-    const checkOutDate = document.getElementById('check-out-date').value;
+        if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
+            return; // 如果日期選擇不完整，直接返回
+        }
 
-    // 確保兩個日期都有值，且退房日 > 入住日
-    if (!checkInDate || !checkOutDate || new Date(checkOutDate) <= new Date(checkInDate)) {
-        // 如果日期不合法，隱藏預訂表單並清空舊的結果
-        document.getElementById('booking-form').style.display = 'none';
-        document.getElementById('availability-result').textContent = '';
-        return;
-    }
+        selectedDates = e.detail.date;
+        const dates = selectedDates.map(date => formatDate(date));
+        const [startDate, endDate] = dates;
+        availabilityResultEl.textContent = '正在查詢空房與價格...';
 
-    const availabilityResultDiv = document.getElementById('availability-result');
-    const bookingForm = document.getElementById('booking-form');
-    const totalPriceElement = document.getElementById('total-price');
-    
-    // 開始查詢，顯示提示訊息
-    availabilityResultDiv.textContent = '正在查詢空房...';
-    bookingForm.style.display = 'none';
-    if (totalPriceElement) totalPriceElement.textContent = '';
+        try {
+            // 第一步：查詢空房
+            const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+            const availabilityResponse = await fetch(availabilityUrl);
+            if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
+            const availabilityData = await availabilityResponse.json();
+            if (availabilityData.error) throw new Error(availabilityData.error);
 
+            if (availabilityData.availableCount > 0) {
+                // 第二步：如果還有空房，就去後端計算正確價格
+                const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+                const priceResponse = await fetch(priceUrl);
+                if (!priceResponse.ok) throw new Error('價格計算失敗');
+                const priceData = await priceResponse.json();
 
-    try {
-        // --- 第一步：檢查空房 (這部分是你原有的邏輯) ---
-        const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${roomId}&startDate=${checkInDate}&endDate=${checkOutDate}`;
-        const availabilityResponse = await fetch(availabilityUrl);
-        if (!availabilityResponse.ok) throw new Error('Availability check failed');
-        const availabilityData = await availabilityResponse.json();
+                // 更新全域變數中的總價
+                finalTotalPrice = priceData.totalPrice; 
 
-        if (availabilityData.availableCount > 0) {
-            
-            // --- 第二步 (關鍵修正！)：取得正確價格並更新 UI ---
-            availabilityResultDiv.textContent = `太棒了！還有 ${availabilityData.availableCount} 間空房。正在計算總金額...`;
-            
-            const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${roomId}&startDate=${checkInDate}&endDate=${checkOutDate}`;
-            const priceResponse = await fetch(priceUrl);
-            if (!priceResponse.ok) throw new Error('Price calculation failed');
-            const priceData = await priceResponse.json();
-
-            // 更新最終的 UI 顯示
-            const nightCount = (new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24);
-            availabilityResultDiv.textContent = `太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
-            
-            if (totalPriceElement) {
-               totalPriceElement.textContent = `住宿 ${nightCount} 晚，總金額: TWD ${priceData.totalPrice.toLocaleString()}`;
+                // 更新 UI 顯示
+                const nights = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
+                availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
+                priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
+                
+                // 所有檢查都通過，啟用訂房按鈕
+                submitBookingButton.disabled = false;
+            } else {
+                availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
             }
+        } catch (error) {
+            availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
+            console.error("Availability or Price check failed:", error);
+        }
+    }
+
+    // --- 【修正3】移除舊的 calculatePrice 函式 ---
+    // (整個函式被刪除，因為它的邏輯已經整合到 handleDateChange 裡面了)
+
+    async function submitBooking() {
+        if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
+            bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
+            return;
+        }
+
+        submitBookingButton.disabled = true;
+        submitBookingButton.textContent = '正在為您處理...';
+
+        const dates = selectedDates.map(date => formatDate(date));
+        const [startDate, endDate] = dates;
+        
+        // --- 【修正4】使用儲存好的 finalTotalPrice，而不是重新計算 ---
+        const bookingData = {
+            lineUserId: lineProfile.userId,
+            lineDisplayName: lineProfile.displayName,
+            roomId: selectedRoom.id,
+            checkInDate: startDate,
+            checkOutDate: endDate,
+            guestName: guestNameInput.value,
+            guestPhone: guestPhoneInput.value,
+            totalPrice: finalTotalPrice, // 使用從後端拿到的正確價格
+        };
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bookingData),
+            });
+            const result = await response.json();
+            if (!response.ok || result.error) throw new Error(result.error || '訂房失敗');
             
-            // 顯示預訂表單
-            bookingForm.style.display = 'block';
+            submitBookingButton.textContent = '訂房成功！';
+            submitBookingButton.style.backgroundColor = '#00B900';
+            bookingErrorEl.textContent = '';
+            availabilityResultEl.textContent = `訂單 ${result.bookingId} 已送出，此視窗將在 3 秒後自動關閉。`;
 
-        } else {
-            availabilityResultDiv.textContent = availabilityData.error || '抱歉，該房型在您選擇的日期已無空房。';
-            bookingForm.style.display = 'none';
-        }
-    } catch (error) {
-        console.error('查詢失敗:', error);
-        availabilityResultDiv.textContent = '查詢時發生錯誤，請稍後再試。';
-        bookingForm.style.display = 'none';
-    }
-}
+            setTimeout(() => {
+                liff.closeWindow();
+            }, 3000);
 
-    function calculatePrice(startDate, endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        const nights = (end - start) / (1000 * 60 * 60 * 24);
-        if (nights > 0) {
-            const totalPrice = nights * selectedRoom.price;
-            priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${totalPrice}`;
+        } catch (error) {
+            bookingErrorEl.textContent = `錯誤：${error.message}`;
+            submitBookingButton.disabled = false;
+            submitBookingButton.textContent = '確認訂房';
         }
     }
-
-async function submitBooking() {
-    if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
-        bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
-        return;
-    }
-
-    submitBookingButton.disabled = true;
-    submitBookingButton.textContent = '正在為您處理...';
-
-    const dates = selectedDates.map(date => formatDate(date));
-    const [startDate, endDate] = dates;
-    const nights = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
-
-    const bookingData = {
-        lineUserId: lineProfile.userId,
-        lineDisplayName: lineProfile.displayName,
-        roomId: selectedRoom.id,
-        checkInDate: startDate,
-        checkOutDate: endDate,
-        guestName: guestNameInput.value,
-        guestPhone: guestPhoneInput.value,
-        totalPrice: nights * selectedRoom.price,
-    };
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/bookings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(bookingData),
-        });
-        const result = await response.json();
-        if (!response.ok || result.error) throw new Error(result.error || '訂房失敗');
-
-        // 【關鍵修正】不再使用 liff.sendMessages
-        // 而是直接在畫面上顯示成功訊息
-        submitBookingButton.textContent = '訂房成功！';
-        submitBookingButton.style.backgroundColor = '#00B900'; // 讓按鈕變綠色
-        bookingErrorEl.textContent = ''; // 清除舊的錯誤訊息
-        availabilityResultEl.textContent = `訂單 ${result.bookingId} 已送出，此視窗將在 3 秒後自動關閉。`;
-
-        // 延遲 3 秒鐘，然後自動關閉 LIFF 視窗
-        setTimeout(() => {
-            liff.closeWindow();
-        }, 3000);
-
-    } catch (error) {
-        bookingErrorEl.textContent = `錯誤：${error.message}`;
-        submitBookingButton.disabled = false;
-        submitBookingButton.textContent = '確認訂房';
-    }
-}
 
     closeButton.addEventListener('click', closeBookingModal);
     submitBookingButton.addEventListener('click', submitBooking);
