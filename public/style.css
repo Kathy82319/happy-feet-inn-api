@@ -231,3 +231,33 @@ main{padding:1rem}
 header h1 {
     margin-bottom: 10px;
 }
+
+/* --- 【v4.1 暴力級】強制 Modal 顯示樣式 --- */
+
+#booking-modal {
+    /* 使用 fixed 定位，脫離文件流，確保它在最上層 */
+    position: fixed !important; 
+    
+    /* 給一個超高的 z-index，確保它不會被任何東西擋住 */
+    z-index: 9999 !important; 
+    
+    /* 精確定位到畫面正中央 */
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    
+    /* 設定一個可見的寬高和背景 */
+    width: 90% !important;
+    max-width: 500px !important;
+    background-color: white !important; /* 確保背景不是透明的 */
+    
+    /* 確保 overflow 和邊框正常 */
+    border: 1px solid #ccc;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    overflow-y: auto;
+}
+
+/* 強制 .hidden class 使用 display: none，確保元素完全消失不佔位 */
+#booking-modal.hidden {
+    display: none !important;
+}

@@ -97,25 +97,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="cta-button">立即預訂</button>
             </div>
         `;
-        
-        // --- 【v4.0 關鍵偵錯點】 ---
         const bookingButton = card.querySelector('.cta-button');
-        if (bookingButton) {
-            console.log(`[DEBUG] Attaching listener to button for room: ${room.name}`);
-            bookingButton.addEventListener('click', () => {
-                // 如果你點擊按鈕後，F12 Console 有出現這一行，代表監聽器是好的！
-                console.log(`[SUCCESS] Button clicked for room: ${room.name}`);
-                openBookingModal(room);
-            });
-        } else {
-            // 如果 F12 Console 出現這一行，代表我們的 HTML 結構有問題
-            console.error(`[ERROR] Could not find .cta-button for room: ${room.name}`);
-        }
-        
+        bookingButton.addEventListener('click', () => {
+            // 這個日誌我們已經成功看到了，但先留著
+            console.log(`[SUCCESS] Button clicked for room: ${room.name}`);
+            openBookingModal(room);
+        });
         return card;
     }
 
+
+    // --- 【v4.1 關鍵偵錯】在 openBookingModal 中加入詳細步驟日誌 ---
     function openBookingModal(room) {
+        console.log("[DEBUG] Step 1: `openBookingModal` function started.");
         selectedRoom = room;
         selectedDates = [];
         finalTotalPrice = 0;
@@ -127,8 +121,24 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBookingButton.textContent = '確認訂房';
         submitBookingButton.style.backgroundColor = ''; 
         guestPhoneInput.value = '';
-        initializeDatepicker();
+        
+        console.log("[DEBUG] Step 2: About to initialize datepicker...");
+        try {
+            initializeDatepicker();
+            console.log("[DEBUG] Step 3: Datepicker initialized successfully.");
+        } catch (error) {
+            console.error("[FATAL] Datepicker initialization failed!", error);
+            // 如果日期選擇器初始化失敗，我們至少要讓 Modal 顯示出來並提示錯誤
+            availabilityResultEl.textContent = '錯誤：日期選擇器載入失敗！';
+        }
+
+        console.log("[DEBUG] Step 4: About to remove 'hidden' class from modal.");
         bookingModal.classList.remove('hidden');
+        console.log("[DEBUG] Step 5: 'hidden' class removed. Modal should be visible now.");
+
+        // 檢查 modal 的最終計算樣式
+        const modalStyle = window.getComputedStyle(bookingModal);
+        console.log(`[INFO] Final modal computed styles -> display: ${modalStyle.display}, z-index: ${modalStyle.zIndex}, position: ${modalStyle.position}`);
     }
 
     function closeBookingModal() {
