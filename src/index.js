@@ -1,5 +1,5 @@
 // --- 【v3.6 關鍵修正】採用原生 crypto API，不再使用 jose ---
-
+ 
 // 輔助函式：Base64 URL 編碼
 function base64url(buffer) {
     return btoa(String.fromCharCode(...new Uint8Array(buffer)))
