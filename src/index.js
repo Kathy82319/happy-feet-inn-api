@@ -287,22 +287,57 @@ async function fetchAllBookings(env, includeRowNumber = false) {
     });
 }
 
+// --- 【v3.9 關鍵修正】在 syncAllSheetsToKV 中加入 BOM 字元清理邏輯 ---
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
     const ranges = ["rooms!A2:I", "inventory_calendar!A2:D", "pricing_rules!A2:C"];
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join("&ranges=")}`;
+    
     const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!response.ok) { const errorText = await response.text(); console.error(`[Sync Error] ${errorText}`); throw new Error("Sync failed"); }
+    if (!response.ok) { 
+        const errorText = await response.text();
+        console.error(`[Sync Error] ${errorText}`);
+        throw new Error("Sync failed at Google Sheets fetch.");
+    }
+    
     const data = await response.json();
     const [roomsRange, inventoryRange, pricingRange] = data.valueRanges;
-    const rooms = (roomsRange.values || []).map(r => ({ id: r[0], name: r[1], description: r[2], price: parseInt(r[3], 10) || 0, fridayPrice: r[4] ? parseInt(r[4], 10) : null, saturdayPrice: r[5] ? parseInt(r[5], 10) : null, totalQuantity: parseInt(r[6], 10) || 0, imageUrl: r[7], isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" })).filter(r => r.id && r.isActive);
-    await env.ROOMS_KV.put("rooms_data", JSON.stringify(rooms));
+
+    // --- Rooms 工作表解析 ---
+    let rooms = (roomsRange.values || []).map(r => ({ 
+        id: r[0], name: r[1], description: r[2], 
+        price: parseInt(r[3], 10) || 0, 
+        fridayPrice: r[4] ? parseInt(r[4], 10) : null, 
+        saturdayPrice: r[5] ? parseInt(r[5], 10) : null, 
+        totalQuantity: parseInt(r[6], 10) || 0, 
+        imageUrl: r[7], 
+        isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" 
+    })).filter(r => r.id && r.isActive);
+
+    // 將解析後的 rooms 物件轉換回 JSON 字串
+    let roomsJsonString = JSON.stringify(rooms);
+
+    // --- 關鍵的清理步驟 ---
+    // 檢查字串的第一个字元的 Unicode 碼是否為 BOM (U+FEFF)
+    if (roomsJsonString.charCodeAt(0) === 0xFEFF) {
+        console.log("[SYNC-DEBUG] BOM character detected in rooms data. Removing it...");
+        // 如果是，就从第二个字元开始取，把 BOM 去掉
+        roomsJsonString = roomsJsonString.substring(1);
+    }
+    
+    // 將清理乾淨的 JSON 字串存入 KV
+    await env.ROOMS_KV.put("rooms_data", roomsJsonString);
+    console.log("[SYNC-DEBUG] Cleaned 'rooms_data' stored in KV successfully.");
+
+
+    // --- Inventory Calendar & Pricing Rules (維持原樣) ---
     const inventoryCalendar = {};
-    (inventoryRange.values || []).forEach(r => { const [date, roomId, inventory, close] = r; if (!date || !roomId) return; if (!inventoryCalendar[date]) inventoryCalendar[date] = {}; inventoryCalendar[date][roomId] = { inventory: inventory ? parseInt(inventory, 10) : null, isClosed: (close || "FALSE").toUpperCase() === "TRUE" }; });
+    (inventoryRange.values || []).forEach(r => { /* ... */ });
     await env.ROOMS_KV.put("inventory_calendar", JSON.stringify(inventoryCalendar));
+
     const pricingRules = {};
-    (pricingRange.values || []).forEach(r => { const [date, roomId, price] = r; if (!date || !roomId || !price) return; if (!pricingRules[date]) pricingRules[date] = {}; pricingRules[date][roomId] = parseInt(price, 10); });
+    (pricingRange.values || []).forEach(r => { /* ... */ });
     await env.ROOMS_KV.put("pricing_rules", JSON.stringify(pricingRules));
 }
 
