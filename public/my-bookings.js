@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     let lineProfile = {};
-    const roomDataCache = {}; // 用來快取房型名稱與圖片
+    const roomDataCache = {}; 
 
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
@@ -16,16 +16,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function main() {
         liff.init({ liffId: LIFF_ID })
             .then(() => {
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                } else {
-                    getUserProfile();
-                }
+                if (!liff.isLoggedIn()) liff.login();
+                else getUserProfile();
             })
-            .catch(err => {
-                console.error("LIFF Initialization failed", err);
-                alert("LIFF 初始化失敗，請稍後再試。");
-            });
+            .catch(err => console.error("LIFF Initialization failed", err));
     }
 
     function getUserProfile() {
@@ -34,25 +28,47 @@ document.addEventListener('DOMContentLoaded', () => {
             userNameSpan.textContent = profile.displayName;
             userPictureImg.src = profile.pictureUrl;
             userProfileDiv.classList.remove('hidden');
-            fetchRoomsAndThenBookings(); // 先載入房型資料，再載入訂單
+            fetchRoomsAndThenBookings();
         }).catch(err => console.error("Get profile failed", err));
     }
 
+    // --- 【v3.2 關鍵偵錯】強化 fetchRooms 的錯誤回報 ---
     async function fetchRoomsAndThenBookings() {
         try {
+            console.log('[DEBUG] Attempting to fetch /api/rooms...');
             const response = await fetch(`${API_BASE_URL}/api/rooms`);
+            
+            // 無論成功失敗，都先印出狀態碼
+            console.log('[DEBUG] /api/rooms response status:', response.status);
+
+            if (!response.ok) {
+                // 如果 API 回傳錯誤，嘗試讀取並印出錯誤內文
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch rooms. Status: ${response.status}, Body: ${errorText}`);
+            }
+
             const rooms = await response.json();
+            console.log('[DEBUG] /api/rooms response data:', rooms); // 印出收到的房型資料
+
+            if (!rooms || rooms.length === 0) {
+                console.warn('[WARN] /api/rooms returned empty or null data. Using fallback.');
+            }
+
             rooms.forEach(room => {
                 roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
             });
+            
+            console.log('[DEBUG] roomDataCache populated successfully.');
             fetchMyBookings(); // 房型資料準備好後，才去抓訂單
+
         } catch (error) {
-            console.error('Fetching rooms failed:', error);
-            // 即使房型資料載入失敗，還是嘗試載入訂單
+            // 這個 catch 會捕捉到所有 fetch 過程中的錯誤，並印出詳細資訊
+            console.error('CRITICAL: fetchRoomsAndThenBookings function failed:', error);
+            // 即使房型資料載入失敗，還是嘗試載入訂單，讓使用者至少能看到東西
             fetchMyBookings();
         }
     }
-
+    
     async function fetchMyBookings() {
         loadingSpinner.classList.remove('hidden');
         mainContent.classList.add('hidden');

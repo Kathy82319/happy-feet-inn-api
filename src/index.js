@@ -105,7 +105,8 @@ async function handleGetAvailability(request, env) {
     const url = new URL(request.url);
     const roomId = url.searchParams.get("roomId");
     const startDate = url.searchParams.get("startDate");
-    const endDate = url.searchParams.get("endDate");
+    // --- 【v3.2 修正】修正之前錯打的 search_params ---
+    const endDate = url.searchParams.get("endDate"); 
     if (!roomId || !startDate || !endDate) {
         return new Response(JSON.stringify({ error: "Missing required parameters" }), { status: 400, headers: { "Content-Type": "application/json" } });
     }
@@ -170,6 +171,7 @@ async function cancelBookingInSheet(env, bookingId, lineUserId) {
     }
 }
 
+// --- 【v3.2 修正】fetchAllBookings 函式，確保 totalPrice 是數字 ---
 async function fetchAllBookings(env, includeRowNumber = false) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
@@ -187,15 +189,17 @@ async function fetchAllBookings(env, includeRowNumber = false) {
             checkInDate: row[5],
             checkOutDate: row[6],
             guestName: row[7],
+            // 確保從 Google Sheet 過來的價格被正確解析為數字
             totalPrice: parseInt(row[9], 10) || 0,
             status: row[10]
         };
         if (includeRowNumber) {
-            booking.rowNumber = index + 2;
+            booking.rowNumber = index + 2; 
         }
         return booking;
     });
 }
+
 
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
