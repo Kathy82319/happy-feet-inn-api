@@ -120,34 +120,65 @@ async function openRoomDetailsModal(room) {
     const modal = document.getElementById('room-details-modal');
     const detailsContent = document.getElementById('details-content');
 
-    // 顯示一個暫時的讀取訊息
     detailsContent.innerHTML = '<p>正在載入房型詳細資訊...</p>';
     modal.classList.remove('hidden');
 
     try {
-        // 使用我們在後端建立的新 API
         const response = await fetch(`${API_BASE_URL}/api/room-details?roomId=${room.id}`);
         if (!response.ok) throw new Error('無法取得房型資料');
         const roomDetails = await response.json();
 
-        // 產生詳細內容的 HTML
+        // --- 【升級】建立圖片陣列，並過濾掉空的圖片網址 ---
+        const images = [roomDetails.imageUrl, roomDetails.imageUrl_2, roomDetails.imageUrl_3].filter(img => img);
+
+        // --- 【升級】產生圖片輪播的 HTML ---
+        const galleryHTML = images.map((img, index) => `
+            <div class="slide ${index === 0 ? 'active' : ''}">
+                <img src="${img}" alt="${roomDetails.name} picture ${index + 1}">
+            </div>
+        `).join('');
+
         detailsContent.innerHTML = `
             <div class="details-gallery">
-                <img src="${roomDetails.imageUrl || 'https://placehold.co/800x600?text=Room+Image'}" alt="${roomDetails.name}">
-                </div>
+                ${galleryHTML}
+                ${images.length > 1 ? '<button class="gallery-nav prev">&lt;</button><button class="gallery-nav next">&gt;</button>' : ''}
+            </div>
             <div class="details-info">
                 <h2>${roomDetails.name}</h2>
                 <p class="price">平日 NT$ ${roomDetails.price.toLocaleString()} 起</p>
-                <p class="description">${roomDetails.description || '此房型暫無更詳細的描述。'}</p>
+                <p class="description">${roomDetails.detailedDescription || roomDetails.description || '此房型暫無更詳細的描述。'}</p>
                 <button id="modal-book-now" class="cta-button">立即預訂</button>
             </div>
         `;
 
-        // 讓視窗內的「立即預訂」按鈕也能打開訂房日曆
         document.getElementById('modal-book-now').addEventListener('click', () => {
-            modal.classList.add('hidden'); // 先關閉詳細視窗
-            openBookingModal(room);       // 再打開訂房視窗
+            modal.classList.add('hidden');
+            openBookingModal(room);
         });
+
+        // --- 【新增】讓圖片輪播按鈕動起來 ---
+        if (images.length > 1) {
+            let currentSlide = 0;
+            const slides = detailsContent.querySelectorAll('.slide');
+            const nextBtn = detailsContent.querySelector('.gallery-nav.next');
+            const prevBtn = detailsContent.querySelector('.gallery-nav.prev');
+
+            function showSlide(index) {
+                slides.forEach((slide, i) => {
+                    slide.classList.toggle('active', i === index);
+                });
+            }
+
+            nextBtn.addEventListener('click', () => {
+                currentSlide = (currentSlide + 1) % images.length;
+                showSlide(currentSlide);
+            });
+
+            prevBtn.addEventListener('click', () => {
+                currentSlide = (currentSlide - 1 + images.length) % images.length;
+                showSlide(currentSlide);
+            });
+        }
 
     } catch (error) {
         console.error('Fetch room details failed:', error);
@@ -155,8 +186,8 @@ async function openRoomDetailsModal(room) {
     }
 }
 
-// --- 【新增】讓詳細視窗的關閉按鈕生效 ---
-// 我們需要找到詳細視窗的關閉按鈕並加上事件
+// --- 【修正核心】將關閉按鈕的事件監聽，移到 liff-app.js 的主要邏輯區 ---
+// 找到檔案中其他的 closeButton.addEventListener... 把它們放在一起，會比較好管理
 const detailsModal = document.getElementById('room-details-modal');
 detailsModal.querySelector('.close-button').addEventListener('click', () => {
     detailsModal.classList.add('hidden');

@@ -222,14 +222,30 @@ async function fetchAllBookings(env, includeRowNumber = false) {
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
-    const ranges = ["rooms!A2:I", "inventory_calendar!A2:D", "pricing_rules!A2:C"];
+    // --- 【修改】擴大讀取範圍到 L 欄 ---
+    const ranges = ["rooms!A2:L", "inventory_calendar!A2:D", "pricing_rules!A2:C"];
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join("&ranges=")}`;
     const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (!response.ok) { const errorText = await response.text(); console.error(`[Sync Error] ${errorText}`); throw new Error("Sync failed"); }
     const data = await response.json();
     const [roomsRange, inventoryRange, pricingRange] = data.valueRanges;
 
-    const rooms = (roomsRange.values || []).map(r => ({ id: r[0], name: r[1], description: r[2], price: parseInt(r[3], 10) || 0, fridayPrice: r[4] ? parseInt(r[4], 10) : null, saturdayPrice: r[5] ? parseInt(r[5], 10) : null, totalQuantity: parseInt(r[6], 10) || 0, imageUrl: r[7], isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" })).filter(r => r.id && r.isActive);
+    // --- 【修改】更新 .map() 來讀取新欄位的資料 (r[9], r[10], r[11]) ---
+    const rooms = (roomsRange.values || []).map(r => ({ 
+        id: r[0], 
+        name: r[1], 
+        description: r[2], 
+        price: parseInt(r[3], 10) || 0, 
+        fridayPrice: r[4] ? parseInt(r[4], 10) : null, 
+        saturdayPrice: r[5] ? parseInt(r[5], 10) : null, 
+        totalQuantity: parseInt(r[6], 10) || 0, 
+        imageUrl: r[7], 
+        isActive: (r[8] || "FALSE").toUpperCase() === "TRUE",
+        // --- 【新增】對應新的欄位 ---
+        imageUrl_2: r[9] || null,
+        imageUrl_3: r[10] || null,
+        detailedDescription: r[11] || '',
+    })).filter(r => r.id && r.isActive);
     await env.ROOMS_KV.put("rooms_data", JSON.stringify(rooms));
 
     const inventoryCalendar = {};

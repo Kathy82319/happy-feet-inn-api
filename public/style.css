@@ -449,3 +449,37 @@ header h1 {
 .details-info .cta-button {
     margin-top: 2rem;
 }
+
+/* --- 【新增】圖片輪播藝廊樣式 --- */
+.details-gallery {
+    position: relative; /* 為了讓導航按鈕可以定位 */
+    overflow: hidden;
+}
+
+.slide {
+    display: none; /* 預設所有圖片都隱藏 */
+    width: 100%;
+    height: 100%;
+}
+
+.slide.active {
+    display: block; /* 只顯示當前 active 的圖片 */
+}
+
+.gallery-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background-color: rgba(0, 0, 0, 0.4);
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    font-size: 20px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.gallery-nav:hover {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+.gallery-nav.prev { left: 10px; }
+.gallery-nav.next { right: 10px; }
