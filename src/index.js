@@ -24,11 +24,14 @@ export default {
                 let response;
                 if (pathname === '/api/rooms' && method === 'GET') response = await handleGetRooms(request, env);
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
-                else if (pathname === '/api/bookings' && method === 'POST') response = await handleCreateBooking(request, env);
+                else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
                 else if (pathname === '/api/availability' && method === 'GET') response = await handleGetAvailability(request, env);
                 else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
                 else if (pathname === '/api/my-bookings' && method === 'GET') response = await handleGetMyBookings(request, env);
                 else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
+                // --- 【新增】開始 ---
+                else if (pathname === '/api/calendar-metadata' && method === 'GET') response = await handleGetCalendarMetadata(request, env);
+                // --- 【新增】結束 ---
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
                 const newHeaders = new Headers(response.headers);
@@ -56,6 +59,20 @@ export default {
 
 
 // --- API 處理函式 ---
+async function handleGetCalendarMetadata(request, env) {
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get("roomId");
+    const year = parseInt(url.searchParams.get("year"), 10);
+    const month = parseInt(url.searchParams.get("month"), 10); // 月份是 1-12
+
+    if (!roomId || !year || !month) {
+        return new Response(JSON.stringify({ error: "缺少必要參數: roomId, year, month" }), { status: 400 });
+    }
+
+    const metadata = await getCalendarMetadataForRoom(env, roomId, year, month);
+    return new Response(JSON.stringify(metadata), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
 async function handleGetMyBookings(request, env) {
     const url = new URL(request.url);
     const lineUserId = url.searchParams.get("lineUserId");
@@ -134,6 +151,64 @@ function handleCorsPreflight() {
 
 
 // --- 核心商業邏輯 ---
+async function getCalendarMetadataForRoom(env, roomId, year, month) {
+    // 一次性讀取所有需要的資料，避免在迴圈中重複讀取
+    const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
+    const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
+    const pricingRules = await env.ROOMS_KV.get('pricing_rules', 'json') || {};
+    const bookings = await fetchAllBookings(env);
+
+    const targetRoom = allRooms.find(room => room.id === roomId);
+    if (!targetRoom) {
+        // 如果找不到房間，回傳空陣列
+        return { unavailableDates: [], specialPriceDates: [] };
+    }
+
+    const unavailableDates = [];
+    const specialPriceDates = [];
+    const daysInMonth = new Date(year, month, 0).getDate();
+
+    // 遍歷該月份的每一天
+    for (let day = 1; day <= daysInMonth; day++) {
+        const currentDate = new Date(Date.UTC(year, month - 1, day));
+        const dateString = formatDate(currentDate);
+
+        // 1. 檢查是否為特殊定價日
+        if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
+            specialPriceDates.push(dateString);
+        }
+
+        // 2. 檢查當天是否已售完
+        const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
+
+        // 如果庫存日曆設定為關閉，直接標記為不可用
+        if (dayOverrides && dayOverrides.isClosed === true) {
+            unavailableDates.push(dateString);
+            continue; 
+        }
+
+        // 取得當天的總房間數
+        let dayTotalQuantity = targetRoom.totalQuantity;
+        if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
+            dayTotalQuantity = dayOverrides.inventory;
+        }
+
+        // 計算當天已被預訂的房間數
+        const occupiedCount = bookings.filter(b => {
+            const checkIn = new Date(b.checkInDate);
+            const checkOut = new Date(b.checkOutDate);
+            return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
+        }).length;
+
+        const available = dayTotalQuantity - occupiedCount;
+        if (available <= 0) {
+            unavailableDates.push(dateString);
+        }
+    }
+
+    return { unavailableDates, specialPriceDates };
+}
+
 async function cancelBookingInSheet(env, bookingId, lineUserId) {
     const allBookings = await fetchAllBookings(env, true);
     const targetBooking = allBookings.find(b => b.bookingId === bookingId);

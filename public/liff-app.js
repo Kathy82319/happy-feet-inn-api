@@ -13,7 +13,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let lineProfile = {}, selectedRoom = {}, datepicker, finalTotalPrice = 0;
     let selectedDates = []; 
-
+    // --- 【新增】開始 ---
+    let calendarMetadata = { unavailableDates: [], specialPriceDates: [] };
+    // --- 【新增】結束 ---
+    
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
     const userNameSpan = document.getElementById('user-name');
@@ -30,6 +33,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBookingButton = document.getElementById('submit-booking-button');
     const bookingErrorEl = document.getElementById('booking-error');
     const closeButton = document.querySelector('.close-button');
+
+    // --- 【新增】開始 ---
+    async function fetchCalendarMetadata(roomId, year, month) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/calendar-metadata?roomId=${roomId}&year=${year}&month=${month}`);
+        if (!response.ok) throw new Error('無法取得日曆資料');
+        calendarMetadata = await response.json();
+    } catch (error) {
+        console.error("抓取日曆資料失敗:", error);
+        calendarMetadata = { unavailableDates: [], specialPriceDates: [] };
+    }
+    }
+
+    // 將客製化邏輯獨立成一個函式，方便重複使用
+    function customDayRenderer(date) {
+    const dateString = formatDate(date);
+    const dayOfWeek = date.getDay();
+
+    if (calendarMetadata.specialPriceDates.includes(dateString)) {
+        return { classes: 'special-day', tooltip: '特殊假日價格' };
+    }
+    if (dayOfWeek === 6) { return { classes: 'saturday-day' }; } // 週六
+    if (dayOfWeek === 5) { return { classes: 'friday-day' }; } // 週五
+        }
+    // --- 【新增】結束 ---
 
     function main() {
         liff.init({ liffId: LIFF_ID })
@@ -72,22 +100,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function createRoomCard(room) {
-        const card = document.createElement('div');
-        card.className = 'room-card';
-        card.innerHTML = `
-            <img src="${room.imageUrl || 'https://placehold.co/600x400?text=No+Image'}" alt="${room.name}">
-            <div class="room-card-content">
-                <h3>${room.name}</h3>
-                <p class="price">NT$ ${room.price} <span>起 / 每晚</span></p>
-                <p>${room.description || '暫無詳細描述。'}</p>
-                <button class="cta-button">立即預訂</button>
-            </div>
-        `;
-        card.querySelector('.cta-button').addEventListener('click', () => openBookingModal(room));
-        return card;
+    const card = document.createElement('div');
+    card.className = 'room-card';
+
+    // --- 【修改】建立更詳細的價格描述 ---
+    let priceText = `平日 NT$ ${room.price.toLocaleString()}`;
+    if (room.fridayPrice) {
+        priceText += ` / 週五 NT$ ${room.fridayPrice.toLocaleString()}`;
+    }
+    if (room.saturdayPrice) {
+        priceText += ` / 週六 NT$ ${room.saturdayPrice.toLocaleString()}`;
     }
 
-    function openBookingModal(room) {
+    card.innerHTML = `
+        <img src="${room.imageUrl || 'https://placehold.co/600x400?text=No+Image'}" alt="${room.name}">
+        <div class="room-card-content">
+            <h3>${room.name}</h3>
+            <p class="price-summary">${priceText}</p>
+            <p>${room.description || '暫無詳細描述。'}</p>
+            <button class="cta-button">立即預訂</button>
+        </div>
+    `;
+    card.querySelector('.cta-button').addEventListener('click', () => openBookingModal(room));
+    return card;
+    }
+
+    async function openBookingModal(room) {
         selectedRoom = room;
         selectedDates = [];
         finalTotalPrice = 0;
@@ -101,6 +139,11 @@ document.addEventListener('DOMContentLoaded', () => {
         guestPhoneInput.value = '';
         initializeDatepicker();
         bookingModal.classList.remove('hidden');
+        const today = new Date();
+        await fetchCalendarMetadata(room.id, today.getFullYear(), today.getMonth() + 1);
+
+        initializeDatepicker();
+        bookingModal.classList.remove('hidden');
     }
 
     function closeBookingModal() {
@@ -111,23 +154,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function initializeDatepicker() {
-        if (datepicker) datepicker.destroy();
-        const Datepicker = window.Datepicker;
-        if (!Datepicker) {
-            console.error("Datepicker library not loaded!");
-            return;
-        }
-        datepicker = new Datepicker(dateRangePickerEl, {
-            language: 'zh-TW',
-            format: 'yyyy-mm-dd',
-            autohide: true,
-            todayHighlight: true,
-            minDate: new Date(),
-            maxNumberOfDates: 2,
-            buttonClass: 'btn',
+    // public/liff-app.js
+
+function initializeDatepicker() {
+    if (datepicker) datepicker.destroy();
+    const Datepicker = window.Datepicker;
+    if (!Datepicker) { /* ... */ }
+
+    datepicker = new Datepicker(dateRangePickerEl, {
+        language: 'zh-TW',
+        format: 'yyyy-mm-dd',
+        autohide: true,
+        todayHighlight: true,
+        minDate: new Date(),
+        maxNumberOfDates: 2,
+        buttonClass: 'btn',
+        // --- 【新增】日曆客製化選項 ---
+        datesDisabled: calendarMetadata.unavailableDates,
+        beforeShowDay: customDayRenderer,
+    });
+
+    // --- 【新增】監聽月份變更事件 ---
+    dateRangePickerEl.addEventListener('changeMonth', async (e) => {
+        const newDate = e.detail.date;
+        const year = newDate.getFullYear();
+        const month = newDate.getMonth() + 1;
+
+        // 重新抓取新月份的資料
+        await fetchCalendarMetadata(selectedRoom.id, year, month);
+
+        // 更新日曆選項
+        datepicker.setOptions({
+            datesDisabled: calendarMetadata.unavailableDates,
+            beforeShowDay: customDayRenderer
         });
-        dateRangePickerEl.addEventListener('changeDate', handleDateChange);
+        datepicker.update(); // 重新整理日曆畫面
+    });
+
+    dateRangePickerEl.addEventListener('changeDate', handleDateChange);
     }
 
     async function handleDateChange(e) {

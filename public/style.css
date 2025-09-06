@@ -359,3 +359,42 @@ header h1 {
     text-align: left;
     margin: 0;
 }
+
+/* 位於 public/style.css 檔案結尾 */
+
+/* --- 【新增】房型卡片上的價格摘要 --- */
+.room-card-content .price-summary {
+    font-size: 0.9rem;
+    color: #606770;
+    margin: 0.5rem 0 1rem 0;
+    line-height: 1.4;
+}
+
+/* --- 【新增】日曆客製化樣式 --- */
+/* 已售完的日期 */
+.datepicker-cell.disabled, .datepicker-cell.disabled:hover {
+    background: none !important;
+    color: #ccc !important;
+    text-decoration: line-through;
+    cursor: not-allowed;
+}
+
+/* 週五的顏色 */
+.datepicker-cell.friday-day:not(.disabled):not(.selected):not(.range-start):not(.range-end):not(.in-range) {
+    background-color: #e7f3ff; /* 柔和的藍色 */
+}
+
+/* 週六的顏色 */
+.datepicker-cell.saturday-day:not(.disabled):not(.selected):not(.range-start):not(.range-end):not(.in-range) {
+    background-color: #fff8e1; /* 柔和的黃色 */
+}
+
+/* 特殊定價日的顏色 */
+.datepicker-cell.special-day:not(.disabled):not(.selected):not(.range-start):not(.range-end):not(.in-range) {
+    background-color: #e8f5e9; /* 柔和的綠色 */
+    font-weight: bold;
+}
+/* 讓特殊日的邊框更明顯一點 */
+.datepicker-cell.special-day:not(.disabled):not(.selected):not(.focused) {
+     border: 1px solid #a5d6a7;
+}
