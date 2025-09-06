@@ -369,3 +369,83 @@ header h1 {
     margin: 0.5rem 0 1rem 0;
     line-height: 1.4;
 }
+
+/* --- 【新增】房型卡片按鈕容器 --- */
+.card-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 1rem;
+}
+
+/* --- 【新增】次要按鈕樣式 (查看詳情) --- */
+.cta-button.secondary {
+    background-color: #e4e6eb;
+    color: #333;
+}
+.cta-button.secondary:hover {
+    background-color: #d8dbdf;
+}
+
+
+/* --- 【新增】房型詳細視窗樣式 --- */
+#room-details-modal .modal-content.large {
+    max-width: 800px; /* 讓視窗可以更寬 */
+    padding: 0; /* 移除內邊距，讓圖片可以貼齊邊緣 */
+    overflow: hidden; /* 隱藏超出圓角的內容 */
+}
+
+#room-details-modal .close-button {
+    z-index: 10; /* 確保關閉按鈕在圖片之上 */
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+#room-details-modal .close-button:hover {
+    color: #eee;
+}
+
+#details-content {
+    display: flex;
+    flex-direction: column;
+}
+
+@media (min-width: 768px) {
+    #details-content {
+        flex-direction: row; /* 在大螢幕上改為左右排版 */
+        max-height: 80vh;
+    }
+}
+
+.details-gallery {
+    flex: 1.5; /* 圖片區域佔比較大 */
+    background-color: #f0f0f0;
+}
+.details-gallery img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.details-info {
+    flex: 1; /* 文字區域佔比較小 */
+    padding: 2rem;
+    overflow-y: auto;
+}
+.details-info h2 {
+    margin-top: 0;
+    font-size: 1.8rem;
+}
+.details-info .price {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #00b900;
+    margin-bottom: 1.5rem;
+}
+.details-info .description {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #606770;
+}
+.details-info .cta-button {
+    margin-top: 2rem;
+}

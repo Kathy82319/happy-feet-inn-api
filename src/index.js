@@ -25,10 +25,10 @@ export default {
                 if (pathname === '/api/rooms' && method === 'GET') response = await handleGetRooms(request, env);
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
                 else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
+                else if (pathname === '/api/room-details' && method === 'GET') response = await handleGetRoomDetails(request, env);
                 else if (pathname === '/api/availability' && method === 'GET') response = await handleGetAvailability(request, env);
                 else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
                 else if (pathname === '/api/my-bookings' && method === 'GET') response = await handleGetMyBookings(request, env);
-                else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
                 const newHeaders = new Headers(response.headers);
@@ -56,6 +56,27 @@ export default {
 
 
 // --- API 處理函式 ---
+
+async function handleGetRoomDetails(request, env) {
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get("roomId");
+    if (!roomId) {
+        return new Response(JSON.stringify({ error: "Missing roomId parameter" }), { status: 400 });
+    }
+
+    const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
+    if (!roomsData) {
+        return new Response(JSON.stringify({ error: "Rooms data not found." }), { status: 404 });
+    }
+
+    const room = roomsData.find(r => r.id === roomId);
+    if (!room) {
+        return new Response(JSON.stringify({ error: `Room with id ${roomId} not found.` }), { status: 404 });
+    }
+
+    // 為了未來的擴充性（例如多張照片），我們先回傳整個 room 物件
+    return new Response(JSON.stringify(room), { status: 200, headers: { "Content-Type": "application/json" } });
+}
 
 async function handleGetMyBookings(request, env) {
     const url = new URL(request.url);

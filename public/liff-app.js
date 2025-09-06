@@ -73,7 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-    function createRoomCard(room) {
+function createRoomCard(room) {
     const card = document.createElement('div');
     card.className = 'room-card';
     card.innerHTML = `
@@ -82,10 +82,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <h3>${room.name}</h3>
             <p class="price">NT$ ${room.price} <span>起 / 每晚</span></p>
             <p>${room.description || '暫無詳細描述。'}</p>
-            <button class="cta-button">立即預訂</button>
+            <div class="card-actions">
+                <button class="cta-button secondary details-button">查看詳情</button>
+                <button class="cta-button booking-button">立即預訂</button>
+            </div>
         </div>
     `;
-    card.querySelector('.cta-button').addEventListener('click', () => openBookingModal(room));
+    // 【修改】為兩個按鈕分別綁定事件
+    card.querySelector('.details-button').addEventListener('click', () => openRoomDetailsModal(room));
+    card.querySelector('.booking-button').addEventListener('click', () => openBookingModal(room));
     return card;
 }
 
@@ -109,6 +114,54 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeDatepicker();
         bookingModal.classList.remove('hidden');
     }
+
+    // --- 【新增】打開房型詳細視窗的函式 ---
+async function openRoomDetailsModal(room) {
+    const modal = document.getElementById('room-details-modal');
+    const detailsContent = document.getElementById('details-content');
+
+    // 顯示一個暫時的讀取訊息
+    detailsContent.innerHTML = '<p>正在載入房型詳細資訊...</p>';
+    modal.classList.remove('hidden');
+
+    try {
+        // 使用我們在後端建立的新 API
+        const response = await fetch(`${API_BASE_URL}/api/room-details?roomId=${room.id}`);
+        if (!response.ok) throw new Error('無法取得房型資料');
+        const roomDetails = await response.json();
+
+        // 產生詳細內容的 HTML
+        detailsContent.innerHTML = `
+            <div class="details-gallery">
+                <img src="${roomDetails.imageUrl || 'https://placehold.co/800x600?text=Room+Image'}" alt="${roomDetails.name}">
+                </div>
+            <div class="details-info">
+                <h2>${roomDetails.name}</h2>
+                <p class="price">平日 NT$ ${roomDetails.price.toLocaleString()} 起</p>
+                <p class="description">${roomDetails.description || '此房型暫無更詳細的描述。'}</p>
+                <button id="modal-book-now" class="cta-button">立即預訂</button>
+            </div>
+        `;
+
+        // 讓視窗內的「立即預訂」按鈕也能打開訂房日曆
+        document.getElementById('modal-book-now').addEventListener('click', () => {
+            modal.classList.add('hidden'); // 先關閉詳細視窗
+            openBookingModal(room);       // 再打開訂房視窗
+        });
+
+    } catch (error) {
+        console.error('Fetch room details failed:', error);
+        detailsContent.innerHTML = '<p class="error-message">載入失敗，請稍後再試。</p>';
+    }
+}
+
+// --- 【新增】讓詳細視窗的關閉按鈕生效 ---
+// 我們需要找到詳細視窗的關閉按鈕並加上事件
+const detailsModal = document.getElementById('room-details-modal');
+detailsModal.querySelector('.close-button').addEventListener('click', () => {
+    detailsModal.classList.add('hidden');
+});
+    
 
     function closeBookingModal() {
         bookingModal.classList.add('hidden');
