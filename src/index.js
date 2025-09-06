@@ -20,15 +20,16 @@ export default {
 
         if (pathname.startsWith('/api/')) {
             if (method === 'OPTIONS') return handleCorsPreflight();
-            try {
+           try {
                 let response;
                 if (pathname === '/api/rooms' && method === 'GET') response = await handleGetRooms(request, env);
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
-                else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
-                else if (pathname === '/api/room-details' && method === 'GET') response = await handleGetRoomDetails(request, env);
+                else if (pathname === '/api/bookings' && method === 'POST') response = await handleCreateBooking(request, env); // 處理訂房請求
                 else if (pathname === '/api/availability' && method === 'GET') response = await handleGetAvailability(request, env);
                 else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
                 else if (pathname === '/api/my-bookings' && method === 'GET') response = await handleGetMyBookings(request, env);
+                else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
+                else if (pathname === '/api/room-details' && method === 'GET') response = await handleGetRoomDetails(request, env);
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
                 const newHeaders = new Headers(response.headers);
