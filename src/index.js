@@ -29,9 +29,6 @@ export default {
                 else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
                 else if (pathname === '/api/my-bookings' && method === 'GET') response = await handleGetMyBookings(request, env);
                 else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
-                // --- 【新增】開始 ---
-                else if (pathname === '/api/calendar-metadata' && method === 'GET') response = await handleGetCalendarMetadata(request, env);
-                // --- 【新增】結束 ---
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
                 const newHeaders = new Headers(response.headers);
@@ -59,19 +56,6 @@ export default {
 
 
 // --- API 處理函式 ---
-async function handleGetCalendarMetadata(request, env) {
-    const url = new URL(request.url);
-    const roomId = url.searchParams.get("roomId");
-    const year = parseInt(url.searchParams.get("year"), 10);
-    const month = parseInt(url.searchParams.get("month"), 10); // 月份是 1-12
-
-    if (!roomId || !year || !month) {
-        return new Response(JSON.stringify({ error: "缺少必要參數: roomId, year, month" }), { status: 400 });
-    }
-
-    const metadata = await getCalendarMetadataForRoom(env, roomId, year, month);
-    return new Response(JSON.stringify(metadata), { status: 200, headers: { "Content-Type": "application/json" } });
-}
 
 async function handleGetMyBookings(request, env) {
     const url = new URL(request.url);
@@ -151,66 +135,6 @@ function handleCorsPreflight() {
 
 
 // --- 核心商業邏輯 ---
-async function getCalendarMetadataForRoom(env, roomId, year, month) {
-    // 一次性讀取所有需要的資料，避免在迴圈中重複讀取
-    const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
-    const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
-    const pricingRules = await env.ROOMS_KV.get('pricing_rules', 'json') || {};
-    const bookings = await fetchAllBookings(env);
-    
-    const targetRoom = allRooms.find(room => room.id === roomId);
-    if (!targetRoom) {
-        return { unavailableDates: [], specialPriceDates: [] };
-    }
-
-    const unavailableDates = [];
-    const specialPriceDates = [];
-    const daysInMonth = new Date(year, month, 0).getDate();
-
-    for (let day = 1; day <= daysInMonth; day++) {
-        const currentDate = new Date(Date.UTC(year, month - 1, day));
-        const dateString = formatDate(currentDate);
-
-        // 1. 檢查是否為特殊定價日 (邏輯正確，無需修改)
-        if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
-            specialPriceDates.push(dateString);
-        }
-
-        // 2. 檢查當天是否已售完
-        const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
-
-        if (dayOverrides && dayOverrides.isClosed === true) {
-            unavailableDates.push(dateString);
-            continue; 
-        }
-
-        let dayTotalQuantity = targetRoom.totalQuantity;
-        if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
-            dayTotalQuantity = dayOverrides.inventory;
-        }
-
-        // --- 【修正核心】使用 Date.UTC 確保日期比對不受時區影響 ---
-        const occupiedCount = bookings.filter(b => {
-            if (b.roomId !== roomId || b.status === 'CANCELLED') return false;
-            
-            // 將 'YYYY-MM-DD' 字串轉換為 UTC 日期物件進行比較
-            const checkInParts = b.checkInDate.split('-').map(Number);
-            const checkOutParts = b.checkOutDate.split('-').map(Number);
-            const checkIn = new Date(Date.UTC(checkInParts[0], checkInParts[1] - 1, checkInParts[2]));
-            const checkOut = new Date(Date.UTC(checkOutParts[0], checkOutParts[1] - 1, checkOutParts[2]));
-
-            return currentDate >= checkIn && currentDate < checkOut;
-        }).length;
-        
-        const available = dayTotalQuantity - occupiedCount;
-        if (available <= 0) {
-            unavailableDates.push(dateString);
-        }
-    }
-
-    return { unavailableDates, specialPriceDates };
-}
-
 async function cancelBookingInSheet(env, bookingId, lineUserId) {
     const allBookings = await fetchAllBookings(env, true);
     const targetBooking = allBookings.find(b => b.bookingId === bookingId);
