@@ -16,7 +16,6 @@
     "wrangler": "^3.60.3"
   },
   "dependencies": {
-    "google-auth-library": "^9.11.0",
     "hono": "^4.4.12"
   }
 }
