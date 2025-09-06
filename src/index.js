@@ -10,12 +10,17 @@ const staticContent = serveStatic({
 
 // --- 輔助函式與 Google 認證邏輯 ---
 
-// Base64 URL 編碼
+// --- 輔助函式與 Google 認證邏輯 (已驗證版本) ---
 function base64url(buffer) {
-    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-        .replace(/=/g, '')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_');
+    return btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+function str2ab(str) {
+    const buf = new ArrayBuffer(str.length);
+    const bufView = new Uint8Array(buf);
+    for (let i = 0, strLen = str.length; i < strLen; i++) {
+        bufView[i] = str.charCodeAt(i);
+    }
+    return buf;
 }
 
 // 字串轉 ArrayBuffer
@@ -241,23 +246,16 @@ const api = new Hono();
 api.get('/rooms', async (c) => {
     try {
         let roomsDataString = await c.env.ROOMS_KV.get("rooms_data");
-        if (!roomsDataString) {
-            console.error("[API /rooms] KV value for rooms_data is null.");
-            return c.json({ error: "KV value for rooms_data is null." }, 500);
-        }
-        if (roomsDataString.charCodeAt(0) === 0xFEFF) {
-            roomsDataString = roomsDataString.substring(1);
-        }
+        if (!roomsDataString) return c.json({ error: "KV value for rooms_data is null." }, 500);
+        if (roomsDataString.charCodeAt(0) === 0xFEFF) roomsDataString = roomsDataString.substring(1);
         return c.json(JSON.parse(roomsDataString));
     } catch (e) {
-        console.error("[API /rooms] Error:", e);
         return c.json({ error: "Failed to get or parse rooms_data from KV.", details: e.message }, 500);
     }
 });
 api.get('/sync', async (c) => {
     try {
         await syncAllSheetsToKV(c.env);
-        // 为了避免 MIME Type 错误，我们回传一个简单的 JSON 成功讯息
         return c.json({ success: true, message: "Manual sync completed successfully!" });
     } catch (e) {
         console.error("Error during sync:", e);
@@ -298,13 +296,11 @@ api.post('/bookings/cancel', async (c) => {
     return c.json({ success: true, message: "Booking cancelled successfully" });
 });
 
-// 将 API 路由挂载到 /api 路径下
+// 【最終關鍵修正】將 API 路由掛載到主程式的 /api 路徑下
 app.route('/api', api);
 
-// --- 静态档案服务 ---
-// 最后，处理所有其他请求，将它们视为对 public 资料夹内档案的请求
+// 【最終關鍵修正】處理所有其他請求，將它們視為對 public 資料夾內靜態檔案的請求
 app.get('*', serveStatic({ root: './public' }));
 
-
-// --- Cloudflare Pages 的进入点 ---
+// --- Cloudflare Pages 的進入點 ---
 export default app;
