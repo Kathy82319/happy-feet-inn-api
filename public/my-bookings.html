@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>快樂腳旅棧 - 線上訂房</title>
+    <title>快樂腳旅棧 - 我的訂單</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/css/datepicker.min.css">
 </head>
 <body>
     <div id="app">
@@ -16,61 +15,34 @@
                 <span id="user-name"></span>
             </div>
             <nav class="main-nav">
-                <a href="index.html" class="nav-link active">線上訂房</a>
-                <a href="my-bookings.html" class="nav-link">我的訂單</a>
+                <a href="index.html" class="nav-link">線上訂房</a>
+                <a href="my-bookings.html" class="nav-link active">我的訂單</a>
             </nav>
         </header>
 
         <main id="main-content" class="hidden">
-            <div id="room-list-container">
-                <h2>選擇您喜歡的房型</h2>
-                <div id="room-list">
-                    </div>
+            <div id="booking-list-container">
+                <div id="booking-list"></div>
+                <div id="no-booking-message" class="hidden">
+                    <p>您目前沒有任何訂單記錄。</p>
+                </div>
             </div>
         </main>
 
-        <div id="booking-modal" class="modal-overlay hidden">
+        <div id="booking-details-modal" class="modal-overlay hidden">
             <div class="modal-content">
-                <button class="close-button">&times;</button>
-                <h2 id="modal-room-name">預訂房型</h2>
-                <div class="form-group">
-                    <label for="date-range-picker">選擇入住 & 退房日期</label>
-                    <div id="date-range-picker"></div>
-                </div>
-                <p id="availability-result">請選擇住房日期</p>
-                <p id="price-calculation"></p>
-                <hr>
-                <div class="form-group">
-                    <label for="guest-name">訂房大名</label>
-                    <input type="text" id="guest-name" placeholder="請輸入您的姓名">
-                </div>
-                <div class="form-group">
-                    <label for="guest-phone">聯絡電話</label>
-                    <input type="tel" id="guest-phone" placeholder="請輸入您的手機號碼">
-                </div>
-                <p id="booking-error" class="error-message"></p>
-                <button id="submit-booking-button" class="cta-button" disabled>確認訂房</button>
-            </div>
-        </div>
-        
-        <div id="room-details-modal" class="modal-overlay hidden">
-             <div class="modal-content large">
-                <button class="close-button">&times;</button>
-                <div id="details-content">
+                <div id="details-modal-content">
                     </div>
             </div>
         </div>
 
         <div id="loading-spinner">
             <div class="spinner"></div>
-            <p>正在為您載入房型資料...</p>
+            <p>正在載入您的訂單...</p>
         </div>
     </div>
 
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/js/datepicker-full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vanillajs-datepicker@1.3.4/dist/js/locales/zh-TW.js"></script>
-    
-    <script src="liff-app.js"></script>
+    <script src="my-bookings.js"></script>
 </body>
 </html>
