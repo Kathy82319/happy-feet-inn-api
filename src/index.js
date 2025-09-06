@@ -157,10 +157,9 @@ async function getCalendarMetadataForRoom(env, roomId, year, month) {
     const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
     const pricingRules = await env.ROOMS_KV.get('pricing_rules', 'json') || {};
     const bookings = await fetchAllBookings(env);
-
+    
     const targetRoom = allRooms.find(room => room.id === roomId);
     if (!targetRoom) {
-        // 如果找不到房間，回傳空陣列
         return { unavailableDates: [], specialPriceDates: [] };
     }
 
@@ -168,12 +167,11 @@ async function getCalendarMetadataForRoom(env, roomId, year, month) {
     const specialPriceDates = [];
     const daysInMonth = new Date(year, month, 0).getDate();
 
-    // 遍歷該月份的每一天
     for (let day = 1; day <= daysInMonth; day++) {
         const currentDate = new Date(Date.UTC(year, month - 1, day));
         const dateString = formatDate(currentDate);
 
-        // 1. 檢查是否為特殊定價日
+        // 1. 檢查是否為特殊定價日 (邏輯正確，無需修改)
         if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
             specialPriceDates.push(dateString);
         }
@@ -181,25 +179,29 @@ async function getCalendarMetadataForRoom(env, roomId, year, month) {
         // 2. 檢查當天是否已售完
         const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
 
-        // 如果庫存日曆設定為關閉，直接標記為不可用
         if (dayOverrides && dayOverrides.isClosed === true) {
             unavailableDates.push(dateString);
             continue; 
         }
 
-        // 取得當天的總房間數
         let dayTotalQuantity = targetRoom.totalQuantity;
         if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
             dayTotalQuantity = dayOverrides.inventory;
         }
 
-        // 計算當天已被預訂的房間數
+        // --- 【修正核心】使用 Date.UTC 確保日期比對不受時區影響 ---
         const occupiedCount = bookings.filter(b => {
-            const checkIn = new Date(b.checkInDate);
-            const checkOut = new Date(b.checkOutDate);
-            return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
-        }).length;
+            if (b.roomId !== roomId || b.status === 'CANCELLED') return false;
+            
+            // 將 'YYYY-MM-DD' 字串轉換為 UTC 日期物件進行比較
+            const checkInParts = b.checkInDate.split('-').map(Number);
+            const checkOutParts = b.checkOutDate.split('-').map(Number);
+            const checkIn = new Date(Date.UTC(checkInParts[0], checkInParts[1] - 1, checkInParts[2]));
+            const checkOut = new Date(Date.UTC(checkOutParts[0], checkOutParts[1] - 1, checkOutParts[2]));
 
+            return currentDate >= checkIn && currentDate < checkOut;
+        }).length;
+        
         const available = dayTotalQuantity - occupiedCount;
         if (available <= 0) {
             unavailableDates.push(dateString);
