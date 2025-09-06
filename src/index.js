@@ -23,16 +23,6 @@ function str2ab(str) {
     return buf;
 }
 
-// 字串轉 ArrayBuffer
-function str2ab(str) {
-    const buf = new ArrayBuffer(str.length);
-    const bufView = new Uint8Array(buf);
-    for (let i = 0, strLen = str.length; i < strLen; i++) {
-        bufView[i] = str.charCodeAt(i);
-    }
-    return buf;
-}
-
 function pemToArrayBuffer(pem) {
     const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s/g, "");
     const binary_string = atob(b64);
@@ -303,4 +293,4 @@ app.route('/api', api);
 app.get('*', serveStatic({ root: './public' }));
 
 // --- Cloudflare Pages 的進入點 ---
-export default app;
+export default app; 
