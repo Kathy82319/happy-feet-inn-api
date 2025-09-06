@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded'), () => {
     const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
@@ -122,7 +122,7 @@ async function fetchRoomsAndThenBookings() {
                 ${isCancellable ? '<button class="cta-button cancel-button">取消此訂單</button>' : ''}
             </div>
         `;
-        
+
         if (isCancellable) {
             card.querySelector('.cancel-button').addEventListener('click', () => handleCancelBooking(booking.bookingId, checkInDate));
         }
@@ -279,4 +279,4 @@ function createBookingCard(booking) {
     }
 
     main();
-});
+}    
