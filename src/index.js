@@ -141,10 +141,8 @@ async function handleCreateBooking(request, env) {
     if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
         return new Response(JSON.stringify({ error: "Missing required booking data." }), { status: 400 });
     }
-    // 【修改】writeBookingToSheet 現在會回傳更完整的訂單資訊
     const newBookingDetails = await writeBookingToSheet(env, bookingData);
-
-    // 【修改】將完整的訂單資訊回傳給前端
+    
     return new Response(JSON.stringify({ success: true, bookingDetails: newBookingDetails }), { status: 201 });
 }
 
@@ -315,35 +313,20 @@ async function writeBookingToSheet(env, booking) {
     const sheetId = env.GOOGLE_SHEET_ID;
     const range = "bookings!A:K";
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
-
     const timestamp = new Date().toISOString();
     const bookingId = `HB-${Date.now()}`;
-    const newRow = [
-        bookingId, timestamp,
-        booking.lineUserId || "", booking.lineDisplayName || "",
-        booking.roomId, booking.checkInDate, booking.checkOutDate,
-        booking.guestName, booking.guestPhone || "",
-        booking.totalPrice,
-        "PENDING_PAYMENT",
-    ];
-
-    const response = await fetch(url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ values: [newRow] }),
-    });
-
+    const newRow = [ bookingId, timestamp, booking.lineUserId || "", booking.lineDisplayName || "", booking.roomId, booking.checkInDate, booking.checkOutDate, booking.guestName, booking.guestPhone || "", booking.totalPrice, "PENDING_PAYMENT" ];
+    const response = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ values: [newRow] }), });
     if (!response.ok) {
         const errorText = await response.text();
         console.error("Failed to write booking to Google Sheets:", errorText);
         throw new Error("寫入訂單至 Google Sheets 失敗");
     }
-
-    // --- 【新增】從 KV 快取中找出房型名稱和圖片 ---
+    
+    // --- 【關鍵檢查點】確認你的函式結尾是下面這一段 ---
     const allRooms = await env.ROOMS_KV.get("rooms_data", "json") || [];
     const bookedRoom = allRooms.find(room => room.id === booking.roomId);
 
-    // --- 【新增】回傳一個包含所有必要資訊的物件給前端 ---
     return {
         bookingId: bookingId,
         roomId: booking.roomId,
