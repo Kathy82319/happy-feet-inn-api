@@ -380,15 +380,18 @@ async function submitBooking() {
 
 // --- 【新增】發送 LINE Flex Message 的函式 ---
 async function sendBookingConfirmation(details) {
-    // 檢查是否在 LINE 環境內，sendMessages 只能在 LINE App 中使用
+    // 偵錯 1: 確認函式是否被呼叫
+    alert('【偵錯 1】\n準備開始發送 LINE 訊息。');
+
+    // 偵錯 2: 檢查是否在 LINE App 環境中
     if (!liff.isInClient()) {
+        alert('【偵錯 2 - 失敗】\n錯誤：liff.isInClient() 為 false。\n\n這表示你目前是在一般的外部瀏覽器 (如 Chrome, Safari) 進行測試。\n\nliff.sendMessages() 只能在 LINE App 內部的瀏覽器執行。請回到 LINE App 中重試。');
         console.log('不在 LINE 環境中，略過發送訊息。');
         return;
     }
+    alert('【偵錯 2 - 通過】\n liff.isInClient() 為 true，環境正確。');
 
     const nights = (new Date(details.checkOutDate) - new Date(details.checkInDate)) / (1000 * 60 * 60 * 24);
-
-    // 這是 LINE Flex Message 的 JSON 結構
     const flexMessage = {
         "type": "bubble",
         "header": {
@@ -453,17 +456,24 @@ async function sendBookingConfirmation(details) {
             "flex": 0
         }
     };
+    console.log('【偵錯 3】 準備發送的 Flex Message JSON:', JSON.stringify(flexMessage, null, 2));
+    alert('【偵錯 3】\nFlex Message 的 JSON 物件已成功產生。\n\n下一步將呼叫 liff.sendMessages()，這是最關鍵的一步。');
 
     try {
-        // 呼叫 LIFF API 發送訊息
+        // 偵錯 4: 執行 liff.sendMessages
         const result = await liff.sendMessages([{
             type: 'flex',
-            altText: `您的訂單 ${details.bookingId} 已成立！`, // 這是手機推播通知會看到的文字
+            altText: `您的訂單 ${details.bookingId} 已成立！`,
             contents: flexMessage
         }]);
+        
+        // 偵錯 5: 執行成功
+        alert('【偵錯 5 - 成功！】\nliff.sendMessages() 執行成功！你應該已經在聊天室中收到訊息了。');
         console.log('發送確認訊息成功:', result);
+
     } catch (error) {
+        // 偵錯 6: 執行失敗
+        alert(`【偵錯 6 - 失敗！】\nliff.sendMessages() 執行失敗！\n\n錯誤訊息: ${error.message}\n\n請將 F12 Console 中的詳細紅色錯誤訊息截圖給我。`);
         console.error('發送確認訊息失敗:', error);
-        // 即使訊息發送失敗，也不要影響訂房流程，所以只在 console 留下記錄
     }
 }
