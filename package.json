@@ -1,21 +1,17 @@
 {
   "name": "happy-feet-inn-api",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "scripts": {
+    "build": "esbuild src/index.js --bundle --outfile=dist/_worker.js --format=esm && cp -r public/. dist/",
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
-    "test": "vitest",
-    "build": "esbuild --bundle --sourcemap --outdir=dist src/index.js"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240620.0",
-    "esbuild": "^0.23.0",
-    "vitest": "1.6.0",
-    "wrangler": "^3.60.3"
+    "dev": "wrangler dev"
   },
   "dependencies": {
-    "hono": "^4.4.12"
+    "jose": "^5.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.4",
+    "wrangler": "^4.0.0"
   }
 }

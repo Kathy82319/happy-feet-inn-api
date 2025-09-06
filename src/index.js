@@ -1,194 +1,352 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const LIFF_ID = "2008032417-DPqYdL7p"; // 請確認與主頁的 LIFF ID 相同
-    const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
+import { SignJWT } from 'jose';
 
-    let lineProfile = {};
-    const roomDataCache = {}; // 用來快取房型名稱與圖片
+// 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
+function formatDate(date) {
+    if (!(date instanceof Date) || isNaN(date)) return null;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
 
-    const loadingSpinner = document.getElementById('loading-spinner');
-    const userProfileDiv = document.getElementById('user-profile');
-    const userNameSpan = document.getElementById('user-name');
-    const userPictureImg = document.getElementById('user-picture');
-    const mainContent = document.getElementById('main-content');
-    const bookingListDiv = document.getElementById('booking-list');
-    const noBookingMessage = document.getElementById('no-booking-message');
+// --- 主路由器 ---
+export default {
+    async fetch(request, env, ctx) {
+        const url = new URL(request.url);
+        const pathname = url.pathname;
+        const method = request.method;
 
-    function main() {
-        liff.init({ liffId: LIFF_ID })
-            .then(() => {
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                } else {
-                    getUserProfile();
-                }
-            })
-            .catch(err => {
-                console.error("LIFF Initialization failed", err);
-                alert("LIFF 初始化失敗，請稍後再試。");
-            });
-    }
+        console.log(`[Request] Method: ${method}, Path: ${pathname}`);
 
-    function getUserProfile() {
-        liff.getProfile().then(profile => {
-            lineProfile = profile;
-            userNameSpan.textContent = profile.displayName;
-            userPictureImg.src = profile.pictureUrl;
-            userProfileDiv.classList.remove('hidden');
-            fetchRoomsAndThenBookings(); // 先載入房型資料，再載入訂單
-        }).catch(err => console.error("Get profile failed", err));
-    }
+        if (pathname.startsWith('/api/')) {
+            if (method === 'OPTIONS') return handleCorsPreflight();
+            try {
+                let response;
+                if (pathname === '/api/rooms' && method === 'GET') response = await handleGetRooms(request, env);
+                else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
+                else if (pathname === '/api/bookings' && method === 'POST') response = await handleCreateBooking(request, env);
+                else if (pathname === '/api/availability' && method === 'GET') response = await handleGetAvailability(request, env);
+                else if (pathname === '/api/calculate-price' && method === 'GET') response = await handleCalculatePrice(request, env);
+                else if (pathname === '/api/my-bookings' && method === 'GET') response = await handleGetMyBookings(request, env);
+                else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
+                else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
-    async function fetchRoomsAndThenBookings() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/rooms`);
-            const rooms = await response.json();
-            rooms.forEach(room => {
-                roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
-            });
-            fetchMyBookings(); // 房型資料準備好後，才去抓訂單
-        } catch (error) {
-            console.error('Fetching rooms failed:', error);
-            fetchMyBookings();
-        }
-    }
-
-    async function fetchMyBookings() {
-        loadingSpinner.classList.remove('hidden');
-        mainContent.classList.add('hidden');
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/my-bookings?lineUserId=${lineProfile.userId}`);
-            if (!response.ok) throw new Error('無法取得訂單資料');
-            const bookings = await response.json();
-
-            bookingListDiv.innerHTML = ''; 
-
-            if (bookings.length === 0) {
-                noBookingMessage.classList.remove('hidden');
-            } else {
-                noBookingMessage.classList.add('hidden');
-                
-                // --- 【v3.1 關鍵修正】自定義排序邏輯 ---
-                bookings.sort((a, b) => {
-                    // 規則1：如果 a 是 CANCELLED 而 b 不是，a 排在後面
-                    if (a.status === 'CANCELLED' && b.status !== 'CANCELLED') {
-                        return 1;
-                    }
-                    // 規則2：如果 b 是 CANCELLED 而 a 不是，b 排在後面
-                    if (b.status === 'CANCELLED' && a.status !== 'CANCELLED') {
-                        return -1;
-                    }
-                    // 規則3：如果兩個都是 CANCELLED 或都不是，則按入住日期由新到舊排序
-                    return new Date(b.checkInDate) - new Date(a.checkInDate);
-                });
-
-                bookings.forEach(booking => {
-                    const bookingCard = createBookingCard(booking);
-                    bookingListDiv.appendChild(bookingCard);
+                const newHeaders = new Headers(response.headers);
+                newHeaders.set('Access-Control-Allow-Origin', '*');
+                return new Response(response.body, { status: response.status, headers: newHeaders });
+            } catch (error) {
+                console.error(`[Error] Unhandled API error on ${method} ${pathname}:`, error.stack);
+                return new Response(JSON.stringify({ error: error.message || 'An internal server error occurred.' }), { 
+                    status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
                 });
             }
-        } catch (error) {
-            console.error('Fetching bookings failed:', error);
-            bookingListDiv.innerHTML = '<p class="error-message">載入訂單失敗，請稍後再試。</p>';
-        } finally {
-            loadingSpinner.classList.add('hidden');
-            mainContent.classList.remove('hidden');
         }
-    }
-
-    // --- 【v3.1 關鍵修正】將狀態文字中文化 ---
-    function getStatusText(status) {
-        switch (status) {
-            case 'PENDING_PAYMENT':
-                return '待付款';
-            case 'CONFIRMED':
-                return '已確認';
-            case 'CANCELLED':
-                return '已取消';
-            case 'COMPLETED':
-                return '已完成';
-            default:
-                return status; // 如果有其他狀態，直接顯示
-        }
-    }
-
-    function createBookingCard(booking) {
-        const card = document.createElement('div');
-        // 如果訂單已取消，額外添加一個 'cancelled-card' class
-        card.className = `booking-card ${booking.status === 'CANCELLED' ? 'cancelled-card' : ''}`;
-        card.dataset.bookingId = booking.bookingId;
-
-        const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId, imageUrl: 'https://placehold.co/600x400?text=No+Image' };
-        const nights = (new Date(booking.checkOutDate) - new Date(booking.checkInDate)) / (1000 * 60 * 60 * 24);
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const checkInDate = new Date(booking.checkInDate);
-        const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-        const isCancellable = diffDays >= 2 && booking.status !== 'CANCELLED';
-
-        const statusText = getStatusText(booking.status); // 獲取中文狀態
-
-        card.innerHTML = `
-            <div class="booking-card-header">
-                <h3>${roomInfo.name}</h3>
-                <span class="status-badge status-${(booking.status || '').toLowerCase()}">${statusText}</span>
-            </div>
-            <div class="booking-card-body">
-                <img src="${roomInfo.imageUrl}" alt="${roomInfo.name}">
-                <div class="booking-details">
-                    <p><strong>訂單編號:</strong> ${booking.bookingId}</p>
-                    <p><strong>入住日期:</strong> ${booking.checkInDate}</p>
-                    <p><strong>退房日期:</strong> ${booking.checkOutDate} (${nights}晚)</p>
-                    <p><strong>訂房大名:</strong> ${booking.guestName}</p>
-                    <p><strong>訂單總額:</strong> NT$ ${booking.totalPrice.toLocaleString()}</p>
-                </div>
-            </div>
-            <div class="booking-card-footer">
-                ${isCancellable ? '<button class="cta-button cancel-button">取消此訂單</button>' : ''}
-            </div>
-        `;
-        
-        if (isCancellable) {
-            card.querySelector('.cancel-button').addEventListener('click', () => handleCancelBooking(booking.bookingId, checkInDate));
-        }
-
-        return card;
-    }
-
-    async function handleCancelBooking(bookingId, checkInDate) {
-        const confirmed = confirm("您確定要取消這筆訂單嗎？此操作無法復原。");
-        if (!confirmed) return;
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-
-        if (diffDays < 2) {
-            alert("訂房當日(或前一日)不可取消，若有問題請洽客服人員。");
-            return;
-        }
-
+        return env.ASSETS.fetch(request);
+    },
+    async scheduled(event, env, ctx) {
+        console.log("[Cron] Scheduled sync triggered...");
         try {
-            const response = await fetch(`${API_BASE_URL}/api/bookings/cancel`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    bookingId: bookingId,
-                    lineUserId: lineProfile.userId
-                }),
-            });
-            const result = await response.json();
-            if (!response.ok || result.error) throw new Error(result.error || '取消訂單失敗');
-
-            alert('訂單已成功取消！');
-            // 重新載入所有訂單，以確保排序和狀態都正確更新
-            fetchMyBookings();
-            
+            await syncAllSheetsToKV(env);
+            console.log("[Cron] Scheduled sync completed successfully.");
         } catch (error) {
-            console.error('Cancel booking failed:', error);
-            alert(`取消失敗：${error.message}`);
+            console.error("[Cron] Scheduled sync failed:", error);
         }
+    },
+};
+
+
+// --- API 處理函式 ---
+async function handleGetMyBookings(request, env) {
+    const url = new URL(request.url);
+    const lineUserId = url.searchParams.get("lineUserId");
+    if (!lineUserId) {
+        return new Response(JSON.stringify({ error: "Missing lineUserId" }), { status: 400 });
+    }
+    const allBookings = await fetchAllBookings(env);
+    const myBookings = allBookings.filter(b => b.lineUserId === lineUserId);
+    return new Response(JSON.stringify(myBookings), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+async function handleCancelBooking(request, env) {
+    const { bookingId, lineUserId } = await request.json();
+    if (!bookingId || !lineUserId) {
+        return new Response(JSON.stringify({ error: "Missing bookingId or lineUserId" }), { status: 400 });
+    }
+    await cancelBookingInSheet(env, bookingId, lineUserId);
+    return new Response(JSON.stringify({ success: true, message: "Booking cancelled successfully" }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+async function handleCalculatePrice(request, env) {
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get("roomId");
+    const startDate = url.searchParams.get("startDate");
+    const endDate = url.searchParams.get("endDate");
+    if (!roomId || !startDate || !endDate) {
+        return new Response(JSON.stringify({ error: "Missing required parameters for price calculation" }), { status: 400 });
+    }
+    const totalPrice = await calculateTotalPrice(env, roomId, startDate, endDate);
+    return new Response(JSON.stringify({ totalPrice }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+async function handleGetRooms(request, env) {
+    const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
+    if (!roomsData) {
+        return new Response(JSON.stringify({ error: "Rooms data not found." }), { status: 404, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify(roomsData), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+async function handleSync(request, env) {
+    await syncAllSheetsToKV(env);
+    return new Response("Manual sync completed successfully!", { status: 200 });
+}
+
+async function handleGetAvailability(request, env) {
+    const url = new URL(request.url);
+    const roomId = url.searchParams.get("roomId");
+    const startDate = url.searchParams.get("startDate");
+    const endDate = url.searchParams.get("endDate");
+    if (!roomId || !startDate || !endDate) {
+        return new Response(JSON.stringify({ error: "Missing required parameters" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    const availability = await getAvailabilityForRoom(env, roomId, startDate, endDate);
+    return new Response(JSON.stringify(availability), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+async function handleCreateBooking(request, env) {
+    const bookingData = await request.json();
+    if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
+        return new Response(JSON.stringify({ error: "Missing required booking data." }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    const newBookingId = await writeBookingToSheet(env, bookingData);
+    return new Response(JSON.stringify({ success: true, bookingId: newBookingId }), { status: 201, headers: { "Content-Type": "application/json" } });
+}
+
+function handleCorsPreflight() {
+    return new Response(null, {
+        headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+        },
+    });
+}
+
+
+// --- 核心商業邏輯 ---
+async function cancelBookingInSheet(env, bookingId, lineUserId) {
+    const allBookings = await fetchAllBookings(env, true);
+    const targetBooking = allBookings.find(b => b.bookingId === bookingId);
+
+    if (!targetBooking) throw new Error("找不到此訂單。");
+    if (targetBooking.lineUserId !== lineUserId) throw new Error("權限不足，無法取消不屬於您的訂單。");
+    if (targetBooking.status === 'CANCELLED') throw new Error("此訂單已經是取消狀態。");
+
+    const checkInDate = new Date(targetBooking.checkInDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffTime = checkInDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 2) {
+        throw new Error("訂房當日(或前一日)不可取消，若有問題請洽客服人員");
     }
 
-    main();
-});
+    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+    const sheetId = env.GOOGLE_SHEET_ID;
+    const range = `bookings!K${targetBooking.rowNumber}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueInputOption=USER_ENTERED`;
+
+    const response = await fetch(url, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [['CANCELLED']] }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to update booking status in Google Sheets:", errorText);
+        throw new Error("更新訂單狀態失敗。");
+    }
+}
+
+async function fetchAllBookings(env, includeRowNumber = false) {
+    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+    const sheetId = env.GOOGLE_SHEET_ID;
+    const range = "bookings!A2:K";
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) throw new Error("Failed to fetch bookings from Google Sheet");
+    const sheetData = await response.json();
+    return (sheetData.values || []).map((row, index) => {
+        const booking = {
+            bookingId: row[0],
+            timestamp: row[1],
+            lineUserId: row[2],
+            roomId: row[4],
+            checkInDate: row[5],
+            checkOutDate: row[6],
+            guestName: row[7],
+            totalPrice: parseInt(row[9], 10) || 0,
+            status: row[10]
+        };
+        if (includeRowNumber) {
+            booking.rowNumber = index + 2;
+        }
+        return booking;
+    });
+}
+
+async function syncAllSheetsToKV(env) {
+    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+    const sheetId = env.GOOGLE_SHEET_ID;
+    const ranges = ["rooms!A2:I", "inventory_calendar!A2:D", "pricing_rules!A2:C"];
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join("&ranges=")}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) { const errorText = await response.text(); console.error(`[Sync Error] ${errorText}`); throw new Error("Sync failed"); }
+    const data = await response.json();
+    const [roomsRange, inventoryRange, pricingRange] = data.valueRanges;
+
+    const rooms = (roomsRange.values || []).map(r => ({ id: r[0], name: r[1], description: r[2], price: parseInt(r[3], 10) || 0, fridayPrice: r[4] ? parseInt(r[4], 10) : null, saturdayPrice: r[5] ? parseInt(r[5], 10) : null, totalQuantity: parseInt(r[6], 10) || 0, imageUrl: r[7], isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" })).filter(r => r.id && r.isActive);
+    await env.ROOMS_KV.put("rooms_data", JSON.stringify(rooms));
+
+    const inventoryCalendar = {};
+    (inventoryRange.values || []).forEach(r => { const [date, roomId, inventory, close] = r; if (!date || !roomId) return; if (!inventoryCalendar[date]) inventoryCalendar[date] = {}; inventoryCalendar[date][roomId] = { inventory: inventory ? parseInt(inventory, 10) : null, isClosed: (close || "FALSE").toUpperCase() === "TRUE" }; });
+    await env.ROOMS_KV.put("inventory_calendar", JSON.stringify(inventoryCalendar));
+
+    const pricingRules = {};
+    (pricingRange.values || []).forEach(r => { const [date, roomId, price] = r; if (!date || !roomId || !price) return; if (!pricingRules[date]) pricingRules[date] = {}; pricingRules[date][roomId] = parseInt(price, 10); });
+    await env.ROOMS_KV.put("pricing_rules", JSON.stringify(pricingRules));
+}
+
+
+async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
+  const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
+  const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
+  const targetRoom = allRooms.find(room => room.id === roomId);
+  if (!targetRoom) {
+    return { error: 'Room not found', availableCount: 0 };
+  }
+  const bookings = await fetchAllBookings(env);
+  let minAvailableCount = Infinity;
+  const startDate = new Date(startDateStr);
+  const endDate = new Date(endDateStr);
+  let currentDate = new Date(startDate);
+  while (currentDate < endDate) {
+    const dateString = formatDate(currentDate);
+    const dayOverrides = inventoryCalendar[dateString] ? inventoryCalendar[dateString][roomId] : null;
+    if (dayOverrides && dayOverrides.isClosed === true) {
+      minAvailableCount = 0;
+      break; 
+    }
+    let dayTotalQuantity = targetRoom.totalQuantity;
+    if (dayOverrides && dayOverrides.inventory !== null && dayOverrides.inventory !== undefined) {
+      dayTotalQuantity = dayOverrides.inventory;
+    }
+    const occupiedCount = bookings.filter(b => {
+      const checkIn = new Date(b.checkInDate);
+      const checkOut = new Date(b.checkOutDate);
+      return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
+    }).length;
+    const available = dayTotalQuantity - occupiedCount;
+    if (available < minAvailableCount) {
+      minAvailableCount = available;
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
+  return {
+    roomId, startDate: startDateStr, endDate: endDateStr,
+    availableCount: finalCount,
+  };
+}
+
+async function writeBookingToSheet(env, booking) {
+    const availability = await getAvailabilityForRoom(env, booking.roomId, booking.checkInDate, booking.checkOutDate);
+    if (availability.availableCount <= 0) {
+        throw new Error("Sorry, the room is no longer available for the selected dates.");
+    }
+    const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
+    const sheetId = env.GOOGLE_SHEET_ID;
+    const range = "bookings!A:K";
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
+    const timestamp = new Date().toISOString();
+    const bookingId = `HB-${Date.now()}`;
+    const newRow = [
+        bookingId, timestamp,
+        booking.lineUserId || "", booking.lineDisplayName || "",
+        booking.roomId, booking.checkInDate, booking.checkOutDate,
+        booking.guestName, booking.guestPhone || "",
+        booking.totalPrice,
+        "PENDING_PAYMENT",
+    ];
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [newRow] }),
+    });
+    if (!response.ok) throw new Error("Failed to write booking to Google Sheets");
+    return bookingId;
+}
+
+async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
+    const allRooms = await env.ROOMS_KV.get("rooms_data", "json");
+    const pricingRules = await env.ROOMS_KV.get("pricing_rules", "json") || {};
+    const targetRoom = allRooms.find(room => room.id === roomId);
+    if (!targetRoom) throw new Error("Room not found for price calculation.");
+    let totalPrice = 0;
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    let currentDate = new Date(startDate);
+    while (currentDate < endDate) {
+        const dateString = formatDate(currentDate);
+        const dayOfWeek = currentDate.getDay();
+        let dailyPrice = targetRoom.price;
+        if (dayOfWeek === 5 && targetRoom.fridayPrice) {
+            dailyPrice = targetRoom.fridayPrice;
+        } else if (dayOfWeek === 6 && targetRoom.saturdayPrice) {
+            dailyPrice = targetRoom.saturdayPrice;
+        }
+        if (pricingRules[dateString] && pricingRules[dateString][roomId]) {
+            dailyPrice = pricingRules[dateString][roomId];
+        }
+        totalPrice += dailyPrice;
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    return totalPrice;
+}
+
+function pemToArrayBuffer(pem) {
+    const b64 = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "").replace(/-----END PRIVATE KEY-----/g, "").replace(/\s/g, "");
+    const binary_string = atob(b64);
+    const len = binary_string.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binary_string.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+async function getGoogleAuthToken(serviceAccountKeyJson) {
+    if (!serviceAccountKeyJson) throw new Error("GCP_SERVICE_ACCOUNT_KEY is not available.");
+    const serviceAccount = JSON.parse(serviceAccountKeyJson);
+    const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
+    const jwt = await new SignJWT({ scope: "https://www.googleapis.com/auth/spreadsheets" })
+        // --- 【v3.0 關鍵修正】將錯誤的 RS265 改回正確的 RS256 ---
+        .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+        .setIssuer(serviceAccount.client_email)
+        .setAudience("https://oauth2.googleapis.com/token")
+        .setExpirationTime("1h")
+        .setIssuedAt()
+        .sign(await crypto.subtle.importKey("pkcs8", privateKeyBuffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]));
+    const response = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }),
+    });
+    const tokens = await response.json();
+    if (!tokens.access_token) {
+        throw new Error(`Failed to get access token: ${JSON.stringify(tokens)}`);
+    }
+    return tokens.access_token;
+}

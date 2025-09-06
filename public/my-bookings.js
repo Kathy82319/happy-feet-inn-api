@@ -1,10 +1,9 @@
-
 document.addEventListener('DOMContentLoaded', () => {
     const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     let lineProfile = {};
-    const roomDataCache = {}; 
+    const roomDataCache = {}; // 用來快取房型名稱與圖片
 
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
@@ -17,10 +16,16 @@ document.addEventListener('DOMContentLoaded', () => {
     function main() {
         liff.init({ liffId: LIFF_ID })
             .then(() => {
-                if (!liff.isLoggedIn()) liff.login();
-                else getUserProfile();
+                if (!liff.isLoggedIn()) {
+                    liff.login();
+                } else {
+                    getUserProfile();
+                }
             })
-            .catch(err => console.error("LIFF Initialization failed", err));
+            .catch(err => {
+                console.error("LIFF Initialization failed", err);
+                alert("LIFF 初始化失敗，請稍後再試。");
+            });
     }
 
     function getUserProfile() {
@@ -29,35 +34,25 @@ document.addEventListener('DOMContentLoaded', () => {
             userNameSpan.textContent = profile.displayName;
             userPictureImg.src = profile.pictureUrl;
             userProfileDiv.classList.remove('hidden');
-            fetchRoomsAndThenBookings();
+            fetchRoomsAndThenBookings(); // 先載入房型資料，再載入訂單
         }).catch(err => console.error("Get profile failed", err));
     }
 
-    // --- 【v3.7 關鍵修正】強化 fetchRooms 的前端錯誤處理 ---
     async function fetchRoomsAndThenBookings() {
         try {
             const response = await fetch(`${API_BASE_URL}/api/rooms`);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `Failed to fetch rooms with status: ${response.status}`);
-            }
             const rooms = await response.json();
-            if (!rooms || rooms.length === 0) {
-                throw new Error("Received empty room data from server.");
-            }
             rooms.forEach(room => {
                 roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
             });
-            fetchMyBookings();
+            fetchMyBookings(); // 房型資料準備好後，才去抓訂單
         } catch (error) {
-            console.error('CRITICAL: Could not fetch and process room data:', error);
-            // 在畫面上顯示一個對使用者友善的錯誤訊息
-            bookingListDiv.innerHTML = `<p class="error-message">無法載入房型對照資料，導致訂單資訊顯示不完整。<br>請稍後再試或聯繫客服人員。</p>`;
-            loadingSpinner.classList.add('hidden');
-            mainContent.classList.remove('hidden');
+            console.error('Fetching rooms failed:', error);
+            // 即使房型資料載入失敗，還是嘗試載入訂單
+            fetchMyBookings();
         }
     }
-    
+
     async function fetchMyBookings() {
         loadingSpinner.classList.remove('hidden');
         mainContent.classList.add('hidden');

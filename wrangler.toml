@@ -1,18 +1,18 @@
-# 專案名稱
 name = "happy-feet-inn-api"
+main = "src/index.js"
+compatibility_date = "2025-08-31" # 你可以使用今天的日期
 
-# 告訴 Cloudflare Pages 前端靜態檔案的輸出目錄是 "public"
-pages_build_output_dir = "public"
+# 我們未來會在這裡加上 KV 的設定
+# [[kv_namespaces]]
+# binding = "ROOMS_KV"
+# id = "1MOFcdTXg7x1NK-yaYoHHoHwC6NWGbWF4K64wNUmdD1w"
 
-# 相容性日期，確保環境穩定
-compatibility_date = "2024-06-20"
-
-# 綁定 KV 命名空間
-[[kv_namespaces]]
-binding = "ROOMS_KV"
-id = "26a24683515742918824143a50d753c8"
-
-# 設定環境變數
 [vars]
+# 請務必將這裡的 ID 換成你自己的 Google Sheet ID
 GOOGLE_SHEET_ID = "1MOFcdTXg7x1NK-yaYoHHoHwC6NWGbWF4K64wNUmdD1w"
-# GCP_SERVICE_ACCOUNT_KEY 是一個 secret，我們會在 Cloudflare 儀表板設定
+
+[triggers]
+# "*/5 * * * *" 代表每 5 分鐘執行一次
+crons = ["*/5 * * * *"]
+
+# Final DNS refresh trigger
