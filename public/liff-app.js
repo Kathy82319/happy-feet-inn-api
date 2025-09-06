@@ -1,3 +1,4 @@
+// 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
 function formatDate(date) {
     if (!(date instanceof Date) || isNaN(date)) return null;
     const year = date.getFullYear();
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let lineProfile = {}, selectedRoom = {}, datepicker, finalTotalPrice = 0;
     let selectedDates = []; 
     
+    // 取得所有需要的 DOM 元素
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
     const userNameSpan = document.getElementById('user-name');
@@ -29,10 +31,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitBookingButton = document.getElementById('submit-booking-button');
     const bookingErrorEl = document.getElementById('booking-error');
     const detailsModal = document.getElementById('room-details-modal');
-    
-    // 將關閉按鈕的事件監聽放在這裡，確保元素存在
     const bookingModalCloseButton = bookingModal.querySelector('.close-button');
     const detailsModalCloseButton = detailsModal.querySelector('.close-button');
+
+    // --- 應用程式主要邏輯 ---
 
     function main() {
         liff.init({ liffId: LIFF_ID })
@@ -40,7 +42,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!liff.isLoggedIn()) liff.login();
                 else getUserProfile();
             })
-            .catch(err => console.error("LIFF Initialization failed", err));
+            .catch(err => {
+                console.error("LIFF Initialization failed", err);
+                loadingSpinner.classList.add('hidden');
+                mainContent.classList.remove('hidden');
+                roomListDiv.innerHTML = '<p class="error-message">LIFF 初始化失敗，請稍後再試。</p>';
+            });
     }
 
     function getUserProfile() {
@@ -63,14 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(rooms => {
                 roomListDiv.innerHTML = '';
                 rooms.forEach(room => roomListDiv.appendChild(createRoomCard(room)));
-                loadingSpinner.classList.add('hidden');
-                mainContent.classList.remove('hidden');
             })
             .catch(error => {
                 console.error('Fetching rooms failed:', error);
+                roomListDiv.innerHTML = '<p class="error-message">載入房型資料失敗，請稍後再試。</p>';
+            })
+            .finally(() => {
                 loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
-                roomListDiv.innerHTML = '<p>載入房型資料失敗，請稍後再試。</p>';
             });
     }
 
@@ -241,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await sendBookingConfirmation(result.bookingDetails);
             submitBookingButton.textContent = '訂房成功！';
-            submitBookingButton.style.backgroundColor = '#4CAF50'; // 使用一個明確的成功色
+            submitBookingButton.style.backgroundColor = '#4CAF50';
             bookingErrorEl.textContent = '';
             availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出，確認訊息已發送至您的 LINE！ 3 秒後將關閉視窗。`;
             setTimeout(() => { closeBookingModal(); }, 3000);
@@ -273,11 +280,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Event Listeners
+    // --- 綁定事件監聽 ---
     bookingModalCloseButton.addEventListener('click', closeBookingModal);
     detailsModalCloseButton.addEventListener('click', () => { detailsModal.classList.add('hidden'); });
     submitBookingButton.addEventListener('click', submitBooking);
     
-    // Start the application
+    // --- 啟動應用程式 ---
     main();
 });
