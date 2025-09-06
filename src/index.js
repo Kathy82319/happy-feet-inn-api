@@ -1,12 +1,18 @@
+document.addEventListener('DOMContentLoaded', () => {
+    const LIFF_ID = "2008032417-DPqYdL7p"; // 請確認與主頁的 LIFF ID 相同
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     let lineProfile = {};
     const roomDataCache = {}; // 用來快取房型名稱與圖片
-    const roomDataCache = {}; 
 
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
-@@ -16,16 +16,10 @@
+    const userNameSpan = document.getElementById('user-name');
+    const userPictureImg = document.getElementById('user-picture');
+    const mainContent = document.getElementById('main-content');
+    const bookingListDiv = document.getElementById('booking-list');
+    const noBookingMessage = document.getElementById('no-booking-message');
+
     function main() {
         liff.init({ liffId: LIFF_ID })
             .then(() => {
@@ -15,66 +21,37 @@
                 } else {
                     getUserProfile();
                 }
-                if (!liff.isLoggedIn()) liff.login();
-                else getUserProfile();
             })
             .catch(err => {
                 console.error("LIFF Initialization failed", err);
                 alert("LIFF 初始化失敗，請稍後再試。");
             });
-            .catch(err => console.error("LIFF Initialization failed", err));
     }
 
     function getUserProfile() {
-@@ -34,136 +28,158 @@
+        liff.getProfile().then(profile => {
+            lineProfile = profile;
             userNameSpan.textContent = profile.displayName;
             userPictureImg.src = profile.pictureUrl;
             userProfileDiv.classList.remove('hidden');
             fetchRoomsAndThenBookings(); // 先載入房型資料，再載入訂單
-            fetchRoomsAndThenBookings();
         }).catch(err => console.error("Get profile failed", err));
     }
 
-    // --- 【v3.2 關鍵偵錯】強化 fetchRooms 的錯誤回報 ---
     async function fetchRoomsAndThenBookings() {
         try {
-            console.log('[DEBUG] Attempting to fetch /api/rooms...');
             const response = await fetch(`${API_BASE_URL}/api/rooms`);
-            
-            // 無論成功失敗，都先印出狀態碼
-            console.log('[DEBUG] /api/rooms response status:', response.status);
-
-            if (!response.ok) {
-                // 如果 API 回傳錯誤，嘗試讀取並印出錯誤內文
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch rooms. Status: ${response.status}, Body: ${errorText}`);
-            }
-
             const rooms = await response.json();
-            console.log('[DEBUG] /api/rooms response data:', rooms); // 印出收到的房型資料
-
-            if (!rooms || rooms.length === 0) {
-                console.warn('[WARN] /api/rooms returned empty or null data. Using fallback.');
-            }
-
             rooms.forEach(room => {
                 roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
             });
-            
-            console.log('[DEBUG] roomDataCache populated successfully.');
             fetchMyBookings(); // 房型資料準備好後，才去抓訂單
-
         } catch (error) {
             console.error('Fetching rooms failed:', error);
-            // 即使房型資料載入失敗，還是嘗試載入訂單
-            // 這個 catch 會捕捉到所有 fetch 過程中的錯誤，並印出詳細資訊
-            console.error('CRITICAL: fetchRoomsAndThenBookings function failed:', error);
-            // 即使房型資料載入失敗，還是嘗試載入訂單，讓使用者至少能看到東西
             fetchMyBookings();
         }
     }
 
-    
     async function fetchMyBookings() {
         loadingSpinner.classList.remove('hidden');
         mainContent.classList.add('hidden');
@@ -83,14 +60,27 @@
             if (!response.ok) throw new Error('無法取得訂單資料');
             const bookings = await response.json();
 
-            bookingListDiv.innerHTML = ''; // 清空舊列表
+            bookingListDiv.innerHTML = ''; 
 
             if (bookings.length === 0) {
                 noBookingMessage.classList.remove('hidden');
             } else {
                 noBookingMessage.classList.add('hidden');
-                // 將訂單按入住日期由新到舊排序
-                bookings.sort((a, b) => new Date(b.checkInDate) - new Date(a.checkInDate));
+                
+                // --- 【v3.1 關鍵修正】自定義排序邏輯 ---
+                bookings.sort((a, b) => {
+                    // 規則1：如果 a 是 CANCELLED 而 b 不是，a 排在後面
+                    if (a.status === 'CANCELLED' && b.status !== 'CANCELLED') {
+                        return 1;
+                    }
+                    // 規則2：如果 b 是 CANCELLED 而 a 不是，b 排在後面
+                    if (b.status === 'CANCELLED' && a.status !== 'CANCELLED') {
+                        return -1;
+                    }
+                    // 規則3：如果兩個都是 CANCELLED 或都不是，則按入住日期由新到舊排序
+                    return new Date(b.checkInDate) - new Date(a.checkInDate);
+                });
+
                 bookings.forEach(booking => {
                     const bookingCard = createBookingCard(booking);
                     bookingListDiv.appendChild(bookingCard);
@@ -105,25 +95,43 @@
         }
     }
 
+    // --- 【v3.1 關鍵修正】將狀態文字中文化 ---
+    function getStatusText(status) {
+        switch (status) {
+            case 'PENDING_PAYMENT':
+                return '待付款';
+            case 'CONFIRMED':
+                return '已確認';
+            case 'CANCELLED':
+                return '已取消';
+            case 'COMPLETED':
+                return '已完成';
+            default:
+                return status; // 如果有其他狀態，直接顯示
+        }
+    }
+
     function createBookingCard(booking) {
         const card = document.createElement('div');
-        card.className = 'booking-card';
-        card.dataset.bookingId = booking.bookingId; // 方便之後操作
+        // 如果訂單已取消，額外添加一個 'cancelled-card' class
+        card.className = `booking-card ${booking.status === 'CANCELLED' ? 'cancelled-card' : ''}`;
+        card.dataset.bookingId = booking.bookingId;
 
         const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId, imageUrl: 'https://placehold.co/600x400?text=No+Image' };
         const nights = (new Date(booking.checkOutDate) - new Date(booking.checkInDate)) / (1000 * 60 * 60 * 24);
 
-        // 判斷是否可取消
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const checkInDate = new Date(booking.checkInDate);
         const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
         const isCancellable = diffDays >= 2 && booking.status !== 'CANCELLED';
 
+        const statusText = getStatusText(booking.status); // 獲取中文狀態
+
         card.innerHTML = `
             <div class="booking-card-header">
                 <h3>${roomInfo.name}</h3>
-                <span class="status-badge status-${(booking.status || '').toLowerCase()}">${booking.status}</span>
+                <span class="status-badge status-${(booking.status || '').toLowerCase()}">${statusText}</span>
             </div>
             <div class="booking-card-body">
                 <img src="${roomInfo.imageUrl}" alt="${roomInfo.name}">
@@ -139,7 +147,7 @@
                 ${isCancellable ? '<button class="cta-button cancel-button">取消此訂單</button>' : ''}
             </div>
         `;
-
+        
         if (isCancellable) {
             card.querySelector('.cancel-button').addEventListener('click', () => handleCancelBooking(booking.bookingId, checkInDate));
         }
@@ -148,11 +156,9 @@
     }
 
     async function handleCancelBooking(bookingId, checkInDate) {
-        // 防呆詢問
         const confirmed = confirm("您確定要取消這筆訂單嗎？此操作無法復原。");
         if (!confirmed) return;
 
-        // 再次檢查日期，確保前端檢查與後端一致
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
@@ -175,13 +181,9 @@
             if (!response.ok || result.error) throw new Error(result.error || '取消訂單失敗');
 
             alert('訂單已成功取消！');
-            // 視覺上更新卡片狀態，避免重新整理
-            const cardToUpdate = document.querySelector(`.booking-card[data-booking-id="${bookingId}"]`);
-            if (cardToUpdate) {
-                cardToUpdate.querySelector('.status-badge').textContent = 'CANCELLED';
-                cardToUpdate.querySelector('.status-badge').className = 'status-badge status-cancelled';
-                cardToUpdate.querySelector('.cancel-button').remove(); // 移除取消按鈕
-            }
+            // 重新載入所有訂單，以確保排序和狀態都正確更新
+            fetchMyBookings();
+            
         } catch (error) {
             console.error('Cancel booking failed:', error);
             alert(`取消失敗：${error.message}`);
@@ -189,3 +191,4 @@
     }
 
     main();
+});
