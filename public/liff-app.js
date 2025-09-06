@@ -270,6 +270,7 @@ async function handleDateChange(e) {
 
 // 位於 public/liff-app.js
 
+// --- 【請用這個乾淨版本，取代現有的 submitBooking 函式】 ---
 async function submitBooking() {
     if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
         bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
@@ -288,7 +289,7 @@ async function submitBooking() {
         checkInDate: startDate,
         checkOutDate: endDate,
         guestName: guestNameInput.value,
-        guestPhone: guestPhoneInput.value,
+        guestPhone: guestNameInput.value,
         totalPrice: finalTotalPrice,
     };
 
@@ -303,9 +304,10 @@ async function submitBooking() {
             throw new Error(result.error || '訂房失敗，請稍後再試');
         }
 
-        // --- 【修改處】呼叫時，將 LIFF_ID 一起傳入 ---
+        // 訂房成功後，呼叫發送訊息的邏輯
         await sendBookingConfirmation(result.bookingDetails, LIFF_ID); 
 
+        // 恢復成最終的成功訊息與自動關閉流程
         submitBookingButton.textContent = '訂房成功！';
         submitBookingButton.style.backgroundColor = '#00B900';
         bookingErrorEl.textContent = '';
@@ -384,9 +386,7 @@ try {
     main();
 });
 
-// 位於 public/liff-app.js，放在 submitBooking 函式的下面
-
-// --- 【請用這個完整版本，取代你檔案中現有的 sendBookingConfirmation 函式】 ---
+// --- 【請用這個乾淨版本，取代現有的 sendBookingConfirmation 函式】 ---
 async function sendBookingConfirmation(details, liffId) {
     if (!liff.isInClient()) {
         console.log('不在 LINE 環境中，略過發送訊息。');
@@ -394,104 +394,25 @@ async function sendBookingConfirmation(details, liffId) {
     }
 
     const nights = (new Date(details.checkOutDate) - new Date(details.checkInDate)) / (1000 * 60 * 60 * 24);
+    const flexMessage = { /* ... 這裡的 JSON 內容不變 ... */ };
 
-    const flexMessage = {
+    // 為了確保你看得到完整的程式碼，我再次提供完整的版本
+    const flexMessageFull = {
         "type": "bubble",
-        "header": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                { "type": "text", "text": "訂單成立通知", "weight": "bold", "color": "#1DB446", "size": "sm" },
-                { "type": "text", "text": "快樂腳旅棧", "weight": "bold", "size": "xxl", "margin": "md" },
-                { "type": "text", "text": `訂單編號： ${details.bookingId}`, "size": "xs", "color": "#aaaaaa", "wrap": true }
-            ]
-        },
-        "hero": {
-            "type": "image",
-            "url": details.imageUrl,
-            "size": "full",
-            "aspectRatio": "20:13",
-            "aspectMode": "cover"
-        },
-        "body": {
-            // ... body 內容不變 ...
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "box",
-                    "layout": "vertical",
-                    "margin": "lg",
-                    "spacing": "sm",
-                    "contents": [
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
-                            { "type": "text", "text": "房型", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": details.roomName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]},
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
-                            { "type": "text", "text": "訂房大名", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": details.guestName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]},
-                        { "type": "separator", "margin": "lg" },
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "margin": "lg", "contents": [
-                            { "type": "text", "text": "入住", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": details.checkInDate, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]},
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
-                            { "type": "text", "text": "退房", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": `${details.checkOutDate} (${nights}晚)`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]}
-                    ]
-                }
-            ]
-        },
-        "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "spacing": "sm",
-            "contents": [
-                { "type": "button", "style": "link", "height": "sm", "action": { 
-                    "type": "uri", 
-                    "label": "查看我的所有訂單", 
-                    // --- 【修改處】使用傳進來的 liffId 參數 ---
-                    "uri": `https://liff.line.me/${liffId}/my-bookings.html`
-                }},
-                { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" }
-            ],
-            "flex": 0
-        }
+        "header": { "type": "box", "layout": "vertical", "contents": [ { "type": "text", "text": "訂單成立通知", "weight": "bold", "color": "#1DB446", "size": "sm" }, { "type": "text", "text": "快樂腳旅棧", "weight": "bold", "size": "xxl", "margin": "md" }, { "type": "text", "text": `訂單編號： ${details.bookingId}`, "size": "xs", "color": "#aaaaaa", "wrap": true } ] },
+        "hero": { "type": "image", "url": details.imageUrl, "size": "full", "aspectRatio": "20:13", "aspectMode": "cover" },
+        "body": { "type": "box", "layout": "vertical", "contents": [ { "type": "box", "layout": "vertical", "margin": "lg", "spacing": "sm", "contents": [ { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "房型", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.roomName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "訂房大名", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.guestName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "separator", "margin": "lg" }, { "type": "box", "layout": "baseline", "spacing": "sm", "margin": "lg", "contents": [ { "type": "text", "text": "入住", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.checkInDate, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "退房", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": `${details.checkOutDate} (${nights}晚)`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]} ] } ] },
+        "footer": { "type": "box", "layout": "vertical", "spacing": "sm", "contents": [ { "type": "button", "style": "link", "height": "sm", "action": { "type": "uri", "label": "查看我的所有訂單", "uri": `https://liff.line.me/${liffId}/my-bookings.html` }}, { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" } ], "flex": 0 }
     };
 
     try {
         await liff.sendMessages([{
             type: 'flex',
             altText: `您的訂單 ${details.bookingId} 已成立！`,
-            contents: flexMessage
+            contents: flexMessageFull
         }]);
         console.log('發送確認訊息成功!');
     } catch (error) {
-        console.error('發送確認訊息失敗:', error);
-    }
-}
-
-// --- 【新增】專門用來發送偵錯訊息的函式 ---
-async function sendDebugMessage(error) {
-    if (!liff.isInClient()) {
-        // 如果不在 LINE 環境，就在畫面上顯示更詳細的錯誤
-        bookingErrorEl.textContent = `[偵錯] 錯誤發生但無法傳送至 LINE:\n${error.stack}`;
-        return;
-    }
-    try {
-        // 組合出純文字的錯誤訊息
-        const errorMessage = `【程式錯誤回報】\n\n- 訊息:\n${error.message}\n\n- 堆疊追蹤:\n${error.stack}`;
-
-        await liff.sendMessages([{
-            type: 'text',
-            // 將錯誤訊息截斷以符合 LINE 的字數限制
-            text: errorMessage.substring(0, 4999) 
-        }]);
-    } catch (sendError) {
-        // 如果連發送錯誤訊息本身都失敗了，就在畫面上顯示最終的錯誤
-        bookingErrorEl.textContent = `[偵錯] 連發送錯誤訊息都失敗了！\n原始錯誤: ${error.message}\n發送錯誤: ${sendError.message}`;
+        console.error('發送確認訊息失敗，但訂單仍成功建立:', error);
     }
 }
