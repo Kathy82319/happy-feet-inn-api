@@ -138,10 +138,13 @@ async function handleGetAvailability(request, env) {
 async function handleCreateBooking(request, env) {
     const bookingData = await request.json();
     if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
-        return new Response(JSON.stringify({ error: "Missing required booking data." }), { status: 400, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ error: "Missing required booking data." }), { status: 400 });
     }
-    const newBookingId = await writeBookingToSheet(env, bookingData);
-    return new Response(JSON.stringify({ success: true, bookingId: newBookingId }), { status: 201, headers: { "Content-Type": "application/json" } });
+    // 【修改】writeBookingToSheet 現在會回傳更完整的訂單資訊
+    const newBookingDetails = await writeBookingToSheet(env, bookingData);
+
+    // 【修改】將完整的訂單資訊回傳給前端
+    return new Response(JSON.stringify({ success: true, bookingDetails: newBookingDetails }), { status: 201 });
 }
 
 function handleCorsPreflight() {
@@ -299,15 +302,19 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
   };
 }
 
+// 位於 src/index.js
+
 async function writeBookingToSheet(env, booking) {
     const availability = await getAvailabilityForRoom(env, booking.roomId, booking.checkInDate, booking.checkOutDate);
     if (availability.availableCount <= 0) {
-        throw new Error("Sorry, the room is no longer available for the selected dates.");
+        throw new Error("抱歉，您選擇的日期已無空房。");
     }
+
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
     const range = "bookings!A:K";
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
+
     const timestamp = new Date().toISOString();
     const bookingId = `HB-${Date.now()}`;
     const newRow = [
@@ -318,13 +325,34 @@ async function writeBookingToSheet(env, booking) {
         booking.totalPrice,
         "PENDING_PAYMENT",
     ];
+
     const response = await fetch(url, {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
         body: JSON.stringify({ values: [newRow] }),
     });
-    if (!response.ok) throw new Error("Failed to write booking to Google Sheets");
-    return bookingId;
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to write booking to Google Sheets:", errorText);
+        throw new Error("寫入訂單至 Google Sheets 失敗");
+    }
+
+    // --- 【新增】從 KV 快取中找出房型名稱和圖片 ---
+    const allRooms = await env.ROOMS_KV.get("rooms_data", "json") || [];
+    const bookedRoom = allRooms.find(room => room.id === booking.roomId);
+
+    // --- 【新增】回傳一個包含所有必要資訊的物件給前端 ---
+    return {
+        bookingId: bookingId,
+        roomId: booking.roomId,
+        roomName: bookedRoom ? bookedRoom.name : '未知房型',
+        imageUrl: bookedRoom ? bookedRoom.imageUrl : 'https://placehold.co/1024x512?text=Booking+Confirmed',
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        guestName: booking.guestName,
+        totalPrice: booking.totalPrice
+    };
 }
 
 async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {

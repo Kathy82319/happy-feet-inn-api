@@ -223,48 +223,58 @@ function initializeDatepicker() {
     dateRangePickerEl.addEventListener('changeDate', handleDateChange);
 }
 
-async function handleDateChange(e) {
-    // 重置狀態
-    priceCalculationEl.textContent = '';
-    submitBookingButton.disabled = true;
-
-    if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
-        availabilityResultEl.textContent = '請選擇退房日期';
-        return; 
+async function submitBooking() {
+    if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
+        bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
+        return;
     }
 
-    selectedDates = e.detail.date;
-    selectedDates.sort((a, b) => a - b);
+    submitBookingButton.disabled = true;
+    submitBookingButton.textContent = '正在為您處理...';
     const dates = selectedDates.map(date => formatDate(date));
     const [startDate, endDate] = dates;
 
-    availabilityResultEl.textContent = '正在查詢空房與價格...';
+    const bookingData = {
+        lineUserId: lineProfile.userId,
+        lineDisplayName: lineProfile.displayName,
+        roomId: selectedRoom.id,
+        checkInDate: startDate,
+        checkOutDate: endDate,
+        guestName: guestNameInput.value,
+        guestPhone: guestPhoneInput.value,
+        totalPrice: finalTotalPrice,
+    };
 
     try {
-        const startDateObj = new Date(startDate);
-        const endDateObj = new Date(endDate);
-        const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
-        const availabilityResponse = await fetch(availabilityUrl);
-        if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
-        const availabilityData = await availabilityResponse.json();
-        if (availabilityData.error) throw new Error(availabilityData.error);
-
-        if (availabilityData.availableCount > 0) {
-            const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
-            const priceResponse = await fetch(priceUrl);
-            if (!priceResponse.ok) throw new Error('價格計算失敗');
-            const priceData = await priceResponse.json();
-            finalTotalPrice = priceData.totalPrice;
-            const nights = (endDateObj - startDateObj) / (1000 * 60 * 60 * 24);
-            availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
-            priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
-            submitBookingButton.disabled = false;
-        } else {
-            availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
+        const response = await fetch(`${API_BASE_URL}/api/bookings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bookingData),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || '訂房失敗，請稍後再試');
         }
+
+        // --- 【新增】訂房成功後，呼叫發送訊息的邏輯 ---
+        // result.bookingDetails 就是我們後端回傳的完整訂單資訊
+        await sendBookingConfirmation(result.bookingDetails); 
+
+        // --- 【修改】更新成功訊息的提示文字 ---
+        submitBookingButton.textContent = '訂房成功！';
+        submitBookingButton.style.backgroundColor = '#00B900';
+        bookingErrorEl.textContent = '';
+        availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出，確認訊息已發送至您的 LINE！ 3 秒後將關閉視窗。`;
+
+        setTimeout(() => {
+            closeBookingModal();
+            // 也可以選擇重新載入頁面 window.location.reload();
+        }, 3000);
+
     } catch (error) {
-        availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
-        console.error("API check failed:", error);
+        bookingErrorEl.textContent = `錯誤：${error.message}`;
+        submitBookingButton.disabled = false;
+        submitBookingButton.textContent = '確認訂房';
     }
 }
 
@@ -320,3 +330,95 @@ async function handleDateChange(e) {
 
     main();
 });
+
+// 位於 public/liff-app.js，放在 submitBooking 函式的下面
+
+// --- 【新增】發送 LINE Flex Message 的函式 ---
+async function sendBookingConfirmation(details) {
+    // 檢查是否在 LINE 環境內，sendMessages 只能在 LINE App 中使用
+    if (!liff.isInClient()) {
+        console.log('不在 LINE 環境中，略過發送訊息。');
+        return;
+    }
+
+    const nights = (new Date(details.checkOutDate) - new Date(details.checkInDate)) / (1000 * 60 * 60 * 24);
+
+    // 這是 LINE Flex Message 的 JSON 結構
+    const flexMessage = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                { "type": "text", "text": "訂單成立通知", "weight": "bold", "color": "#1DB446", "size": "sm" },
+                { "type": "text", "text": "快樂腳旅棧", "weight": "bold", "size": "xxl", "margin": "md" },
+                { "type": "text", "text": `訂單編號： ${details.bookingId}`, "size": "xs", "color": "#aaaaaa", "wrap": true }
+            ]
+        },
+        "hero": {
+            "type": "image",
+            "url": details.imageUrl,
+            "size": "full",
+            "aspectRatio": "20:13",
+            "aspectMode": "cover"
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "margin": "lg",
+                    "spacing": "sm",
+                    "contents": [
+                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
+                            { "type": "text", "text": "房型", "color": "#aaaaaa", "size": "sm", "flex": 2 },
+                            { "type": "text", "text": details.roomName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
+                        ]},
+                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
+                            { "type": "text", "text": "訂房大名", "color": "#aaaaaa", "size": "sm", "flex": 2 },
+                            { "type": "text", "text": details.guestName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
+                        ]},
+                        { "type": "separator", "margin": "lg" },
+                        { "type": "box", "layout": "baseline", "spacing": "sm", "margin": "lg", "contents": [
+                            { "type": "text", "text": "入住", "color": "#aaaaaa", "size": "sm", "flex": 2 },
+                            { "type": "text", "text": details.checkInDate, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
+                        ]},
+                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
+                            { "type": "text", "text": "退房", "color": "#aaaaaa", "size": "sm", "flex": 2 },
+                            { "type": "text", "text": `${details.checkOutDate} (${nights}晚)`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
+                        ]}
+                    ]
+                }
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": [
+                { "type": "button", "style": "link", "height": "sm", "action": { 
+                    "type": "uri", 
+                    "label": "查看我的所有訂單", 
+                    "uri": `https://liff.line.me/${LIFF_ID}/my-bookings.html` // 確保 LIFF ID 是正確的
+                }},
+                { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" }
+            ],
+            "flex": 0
+        }
+    };
+
+    try {
+        // 呼叫 LIFF API 發送訊息
+        const result = await liff.sendMessages([{
+            type: 'flex',
+            altText: `您的訂單 ${details.bookingId} 已成立！`, // 這是手機推播通知會看到的文字
+            contents: flexMessage
+        }]);
+        console.log('發送確認訊息成功:', result);
+    } catch (error) {
+        console.error('發送確認訊息失敗:', error);
+        // 即使訊息發送失敗，也不要影響訂房流程，所以只在 console 留下記錄
+    }
+}

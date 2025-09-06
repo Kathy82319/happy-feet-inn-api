@@ -485,9 +485,8 @@ header h1 {
 .gallery-nav.next { right: 10px; }
 
 /* --- 【新增】訂單明細中的聯絡資訊樣式 --- */
-
 .contact-info {
-    margin-top: 25px;
+    margin-top: 20px;
     padding: 15px;
     background-color: #f7f7f7;
     border-radius: 8px;
