@@ -1,6 +1,13 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-pages';
 
+const staticContent = serveStatic({
+  root: './public',
+  notFound: (path, c) => {
+    return c.notFound();
+  },
+});
+
 // --- 輔助函式與 Google 認證邏輯 ---
 
 // Base64 URL 編碼
