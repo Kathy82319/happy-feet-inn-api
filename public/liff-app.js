@@ -8,12 +8,12 @@ function formatDate(date) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const LIFF_ID = "2008032417-DPqYdL7p";
+    const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     let lineProfile = {}, selectedRoom = {}, datepicker, finalTotalPrice = 0;
-    let selectedDates = [];
-
+    let selectedDates = []; 
+    
     // 取得所有需要的 DOM 元素
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
             })
             .catch(err => {
                 console.error("LIFF Initialization failed", err);
-                loadingSpinner.classList.add('hidden'); // 確保初始化失敗也會關閉 spinner
+                loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
                 roomListDiv.innerHTML = '<p class="error-message">LIFF 初始化失敗，請稍後再試。</p>';
             });
@@ -70,13 +70,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(rooms => {
                 roomListDiv.innerHTML = '';
                 rooms.forEach(room => roomListDiv.appendChild(createRoomCard(room)));
+                // 【修正】在成功後，立刻隱藏讀取動畫
+                loadingSpinner.classList.add('hidden');
+                mainContent.classList.remove('hidden');
             })
             .catch(error => {
                 console.error('Fetching rooms failed:', error);
                 roomListDiv.innerHTML = '<p class="error-message">載入房型資料失敗，請稍後再試。</p>';
-            })
-            .finally(() => {
-                // 不論成功或失敗，最後都一定要隱藏讀取動畫
+                // 【修正】在失敗後，也要立刻隱藏讀取動畫
                 loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
             });
