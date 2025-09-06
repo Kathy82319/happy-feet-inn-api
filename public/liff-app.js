@@ -457,7 +457,7 @@ async function sendBookingConfirmation(details, liffId) {
                 { "type": "button", "style": "link", "height": "sm", "action": {
                     "type": "uri",
                     "label": "查看我的所有訂單",
-                    "uri": `https://liff.line.me/${liffId}/index.html`
+                    "uri": `https://liff.line.me/${liffId}`
                 }},
                 { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" }
             ],
