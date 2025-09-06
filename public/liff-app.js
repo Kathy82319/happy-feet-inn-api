@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(err => console.error("Get profile failed", err));
     }
 
-    function fetchRooms() {
+ function fetchRooms() {
         fetch(`${API_BASE_URL}/api/rooms`)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -70,19 +70,17 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(rooms => {
                 roomListDiv.innerHTML = '';
                 rooms.forEach(room => roomListDiv.appendChild(createRoomCard(room)));
-                // 【修正】在成功後，立刻隱藏讀取動畫
                 loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
             })
             .catch(error => {
                 console.error('Fetching rooms failed:', error);
-                roomListDiv.innerHTML = '<p class="error-message">載入房型資料失敗，請稍後再試。</p>';
-                // 【修正】在失敗後，也要立刻隱藏讀取動畫
                 loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
+                roomListDiv.innerHTML = '<p>載入房型資料失敗，請稍後再試。</p>';
             });
     }
-
+    
     function createRoomCard(room) {
         const card = document.createElement('div');
         card.className = 'room-card';
