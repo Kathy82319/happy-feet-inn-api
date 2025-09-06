@@ -112,12 +112,41 @@ async function handleCalculatePrice(request, env) {
 }
 
 async function handleGetRooms(request, env) {
-    const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
-    if (!roomsData) {
-        return new Response(JSON.stringify({ error: "Rooms data not found." }), { status: 404, headers: { "Content-Type": "application/json" } });
+    try {
+        // 增加明確的檢查，確認 KV 綁定是否存在
+        if (!env.ROOMS_KV) {
+            console.error("[Error] KV namespace 'ROOMS_KV' is not bound. Please check wrangler.toml");
+            return new Response(JSON.stringify({ error: "Server configuration error: KV not available." }), { 
+                status: 500, 
+                headers: { "Content-Type": "application/json" } 
+            });
+        }
+
+        const roomsData = await env.ROOMS_KV.get("rooms_data", "json");
+
+        if (!roomsData) {
+            console.warn("[Warning] 'rooms_data' not found in KV. Trigger a sync maybe?");
+            // 【修正重點】在 404 回應中補上 Content-Type header
+            return new Response(JSON.stringify({ error: "Rooms data not found. Please try again later." }), { 
+                status: 404, 
+                headers: { "Content-Type": "application/json" } 
+            });
+        }
+
+        return new Response(JSON.stringify(roomsData), { 
+            status: 200, 
+            headers: { "Content-Type": "application/json" } 
+        });
+
+    } catch (error) {
+        console.error("[Error] Failed to get rooms from KV:", error);
+        return new Response(JSON.stringify({ error: "An error occurred while fetching room data." }), { 
+            status: 500, 
+            headers: { "Content-Type": "application/json" } 
+        });
     }
-    return new Response(JSON.stringify(roomsData), { status: 200, headers: { "Content-Type": "application/json" } });
 }
+
 
 async function handleSync(request, env) {
     await syncAllSheetsToKV(env);
