@@ -1,5 +1,3 @@
-// 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
-// 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
 function formatDate(date) {
     if (!(date instanceof Date) || isNaN(date)) return null;
     const year = date.getFullYear();
@@ -9,12 +7,12 @@ function formatDate(date) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const LIFF_ID = "2008032417-DPqYdL7p";
+    const LIFF_ID = "2008032417-DPqYdL7p"; 
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     let lineProfile = {}, selectedRoom = {}, datepicker, finalTotalPrice = 0;
-    let selectedDates = [];
-
+    let selectedDates = []; 
+    
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
     const userNameSpan = document.getElementById('user-name');
@@ -30,8 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const guestPhoneInput = document.getElementById('guest-phone');
     const submitBookingButton = document.getElementById('submit-booking-button');
     const bookingErrorEl = document.getElementById('booking-error');
-    const closeButton = bookingModal.querySelector('.close-button');
     const detailsModal = document.getElementById('room-details-modal');
+    
+    // 將關閉按鈕的事件監聽放在這裡，確保元素存在
+    const bookingModalCloseButton = bookingModal.querySelector('.close-button');
+    const detailsModalCloseButton = detailsModal.querySelector('.close-button');
 
     function main() {
         liff.init({ liffId: LIFF_ID })
@@ -240,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             await sendBookingConfirmation(result.bookingDetails);
             submitBookingButton.textContent = '訂房成功！';
-            submitBookingButton.style.backgroundColor = '#00B900';
+            submitBookingButton.style.backgroundColor = '#4CAF50'; // 使用一個明確的成功色
             bookingErrorEl.textContent = '';
             availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出，確認訊息已發送至您的 LINE！ 3 秒後將關閉視窗。`;
             setTimeout(() => { closeBookingModal(); }, 3000);
@@ -258,11 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const nights = (new Date(details.checkOutDate) - new Date(details.checkInDate)) / (1000 * 60 * 60 * 24);
         const flexMessage = {
-            "type": "bubble",
-            "header": { "type": "box", "layout": "vertical", "contents": [ { "type": "text", "text": "訂單成立通知", "weight": "bold", "color": "#1DB446", "size": "sm" }, { "type": "text", "text": "快樂腳旅棧", "weight": "bold", "size": "xxl", "margin": "md" }, { "type": "text", "text": `訂單編號： ${details.bookingId}`, "size": "xs", "color": "#aaaaaa", "wrap": true } ] },
-            "hero": { "type": "image", "url": details.imageUrl, "size": "full", "aspectRatio": "20:13", "aspectMode": "cover" },
-            "body": { "type": "box", "layout": "vertical", "contents": [ { "type": "box", "layout": "vertical", "margin": "lg", "spacing": "sm", "contents": [ { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "房型", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.roomName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "訂房大名", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.guestName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "separator", "margin": "lg" }, { "type": "box", "layout": "baseline", "spacing": "sm", "margin": "lg", "contents": [ { "type": "text", "text": "入住", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.checkInDate, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "退房", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": `${details.checkOutDate} (${nights}晚)`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "總金額", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": `NT$ ${details.totalPrice.toLocaleString()}`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5, "weight": "bold" } ]} ] } ] },
-            "footer": { "type": "box", "layout": "vertical", "spacing": "sm", "contents": [ { "type": "button", "style": "link", "height": "sm", "action": { "type": "uri", "label": "查看我的所有訂單", "uri": `https://liff.line.me/${LIFF_ID}/my-bookings.html` }}, { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" } ], "flex": 0 }
+            "type": "bubble", "header": { "type": "box", "layout": "vertical", "contents": [ { "type": "text", "text": "訂單成立通知", "weight": "bold", "color": "#1DB446", "size": "sm" }, { "type": "text", "text": "快樂腳旅棧", "weight": "bold", "size": "xxl", "margin": "md" }, { "type": "text", "text": `訂單編號： ${details.bookingId}`, "size": "xs", "color": "#aaaaaa", "wrap": true } ] }, "hero": { "type": "image", "url": details.imageUrl, "size": "full", "aspectRatio": "20:13", "aspectMode": "cover" }, "body": { "type": "box", "layout": "vertical", "contents": [ { "type": "box", "layout": "vertical", "margin": "lg", "spacing": "sm", "contents": [ { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "房型", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.roomName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "訂房大名", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.guestName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "separator", "margin": "lg" }, { "type": "box", "layout": "baseline", "spacing": "sm", "margin": "lg", "contents": [ { "type": "text", "text": "入住", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": details.checkInDate, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "退房", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": `${details.checkOutDate} (${nights}晚)`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 } ]}, { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [ { "type": "text", "text": "總金額", "color": "#aaaaaa", "size": "sm", "flex": 2 }, { "type": "text", "text": `NT$ ${details.totalPrice.toLocaleString()}`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5, "weight": "bold" } ]} ] } ] }, "footer": { "type": "box", "layout": "vertical", "spacing": "sm", "contents": [ { "type": "button", "style": "link", "height": "sm", "action": { "type": "uri", "label": "查看我的所有訂單", "uri": `https://liff.line.me/${LIFF_ID}/my-bookings.html` }}, { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" } ], "flex": 0 }
         };
         try {
             await liff.sendMessages([{
@@ -276,8 +273,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    detailsModal.querySelector('.close-button').addEventListener('click', () => { detailsModal.classList.add('hidden'); });
-    closeButton.addEventListener('click', closeBookingModal);
+    // Event Listeners
+    bookingModalCloseButton.addEventListener('click', closeBookingModal);
+    detailsModalCloseButton.addEventListener('click', () => { detailsModal.classList.add('hidden'); });
     submitBookingButton.addEventListener('click', submitBooking);
+    
+    // Start the application
     main();
 });
