@@ -106,33 +106,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showBookingDetailsModal(booking) {
-        const modal = document.getElementById('booking-details-modal');
-        const modalContent = document.getElementById('details-modal-content');
-        const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId };
+    const modal = document.getElementById('booking-details-modal');
+    const modalContent = document.getElementById('details-modal-content');
+    const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId };
 
-        modalContent.innerHTML = `
-            <h3>訂單明細：${roomInfo.name}</h3>
-            <p><strong>訂單編號:</strong> ${booking.bookingId}</p>
-            <p><strong>入住日期:</strong> ${booking.checkInDate}</p>
-            <p><strong>訂房大名:</strong> ${booking.guestName}</p>
-            <hr>
-            <h4>入住須知</h4>
-            <ul>
-                <li>入住時間 (Check-in) 為下午 3:00 後。</li>
-                <li>退房時間 (Check-out) 為上午 11:00 前。</li>
-                <li>請持訂房人有效證件辦理入住。</li>
-                <li>為響應環保，我們不主動提供一次性盥洗用品，敬請自備。</li>
-                <li>全館禁止吸菸，感謝您的合作。</li>
-            </ul>
-            <button id="close-details-modal" class="cta-button">關閉</button>
-        `;
+    // --- 【修改】在這裡加入飯店聯絡資訊的 HTML ---
+    modalContent.innerHTML = `
+        <h3>訂單明細：${roomInfo.name}</h3>
+        <p><strong>訂單編號:</strong> ${booking.bookingId}</p>
+        <p><strong>入住日期:</strong> ${booking.checkInDate}</p>
+        <p><strong>訂房大名:</strong> ${booking.guestName}</p>
+        <hr>
+        <h4>入住須知</h4>
+        <ul>
+            <li>入住時間 (Check-in) 為下午 3:00 後。</li>
+            <li>退房時間 (Check-out) 為上午 11:00 前。</li>
+            <li>請持訂房人有效證件辦理入住，未滿18歲需家長同意書。</li>
+            <li>為響應環保，我們不主動提供一次性盥洗用品，敬請自備。</li>
+            <li>全館禁止吸菸，禁止攜帶寵物，感謝您的合作。</li>
+        </ul>
+        
+        <div class="contact-info">
+            <h4>聯絡我們</h4>
+            <p>
+                <strong>地址：</strong>
+                <a href="https://maps.app.goo.gl/yDbLFXpzLUWsJU9d7" target="_blank">
+                     台中市中區中華路一段185號十樓
+                </a>
+            </p>
+            <p>
+                <strong>電話：</strong>
+                <a href="tel:+886-4-22232033">
+                    04-2223-2033 (點擊撥打)
+                </a>
+            </p>
+        </div>
+        
+        <button id="close-details-modal" class="cta-button">關閉</button>
+    `;
 
-        modal.classList.remove('hidden');
+    modal.classList.remove('hidden');
 
-        document.getElementById('close-details-modal').addEventListener('click', () => {
-            modal.classList.add('hidden');
-        });
-    }
+    document.getElementById('close-details-modal').addEventListener('click', () => {
+        modal.classList.add('hidden');
+    });
+}
 
     function createBookingCard(booking) {
         const card = document.createElement('div');

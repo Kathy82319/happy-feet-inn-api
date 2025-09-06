@@ -483,3 +483,37 @@ header h1 {
 }
 .gallery-nav.prev { left: 10px; }
 .gallery-nav.next { right: 10px; }
+
+/* --- 【新增】訂單明細中的聯絡資訊樣式 --- */
+
+.contact-info {
+    margin-top: 25px;
+    padding: 15px;
+    background-color: #f7f7f7;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+
+.contact-info h4 {
+    margin-top: 0;
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.contact-info p {
+    margin: 5px 0;
+    font-size: 0.95em;
+}
+
+.contact-info a {
+    color: #007bff; /* 使用藍色來突顯這是一個連結 */
+    text-decoration: none;
+}
+
+.contact-info a:hover {
+    text-decoration: underline;
+}
+
+#close-details-modal {
+    margin-top: 20px; /* 讓關閉按鈕跟聯絡資訊有點間距 */
+}
