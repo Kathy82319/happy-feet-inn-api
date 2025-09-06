@@ -411,13 +411,13 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
     const serviceAccount = JSON.parse(serviceAccountKeyJson);
     const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
     const jwt = await new SignJWT({ scope: "https://www.googleapis.com/auth/spreadsheets" })
-        // --- 【v3.0 關鍵修正】將錯誤的 RS265 改回正確的 RS256 ---
-        .setProtectedHeader({ alg: "RS256", typ: "JWT" })
+        .setProtectedHeader({ alg: "RS256", typ: "JWT" }) // <--- 就是要把這一行加回來！
         .setIssuer(serviceAccount.client_email)
         .setAudience("https://oauth2.googleapis.com/token")
         .setExpirationTime("1h")
         .setIssuedAt()
         .sign(await crypto.subtle.importKey("pkcs8", privateKeyBuffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]));
+
     const response = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
