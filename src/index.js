@@ -35,56 +35,28 @@ function pemToArrayBuffer(pem) {
 // --- 使用原生 crypto API 的 Google 認證函式 ---
 async function getGoogleAuthToken(serviceAccountKeyJson) {
     if (!serviceAccountKeyJson) throw new Error("GCP_SERVICE_ACCOUNT_KEY is not available.");
-    
     const serviceAccount = JSON.parse(serviceAccountKeyJson);
     const privateKeyBuffer = pemToArrayBuffer(serviceAccount.private_key);
-
-    const privateKey = await crypto.subtle.importKey(
-        "pkcs8",
-        privateKeyBuffer,
-        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-        true,
-        ["sign"]
-    );
-
+    const privateKey = await crypto.subtle.importKey("pkcs8", privateKeyBuffer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["sign"]);
     const header = { alg: "RS256", typ: "JWT" };
     const now = Math.floor(Date.now() / 1000);
-    const payload = {
-        iss: serviceAccount.client_email,
-        scope: "https://www.googleapis.com/auth/spreadsheets",
-        aud: "https://oauth2.googleapis.com/token",
-        exp: now + 3600, // 1 hour expiration
-        iat: now,
-    };
-
+    const payload = { iss: serviceAccount.client_email, scope: "https://www.googleapis.com/auth/spreadsheets", aud: "https://oauth2.googleapis.com/token", exp: now + 3600, iat: now };
     const encodedHeader = base64url(str2ab(JSON.stringify(header)));
     const encodedPayload = base64url(str2ab(JSON.stringify(payload)));
     const signatureInput = `${encodedHeader}.${encodedPayload}`;
-
-    const signatureBuffer = await crypto.subtle.sign(
-        { name: "RSASSA-PKCS1-v1_5" },
-        privateKey,
-        str2ab(signatureInput)
-    );
-
+    const signatureBuffer = await crypto.subtle.sign({ name: "RSASSA-PKCS1-v1_5" }, privateKey, str2ab(signatureInput));
     const encodedSignature = base64url(signatureBuffer);
     const jwt = `${signatureInput}.${encodedSignature}`;
-
     const response = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-            grant_type: "urn:ietf:params:oauth:grant-type-jwt-bearer",
-            assertion: jwt,
-        }),
+        body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type-jwt-bearer", assertion: jwt }),
     });
-
     const tokens = await response.json();
     if (!tokens.access_token) {
         console.error("Token exchange failed:", tokens);
         throw new Error("Failed to get access token from Google.");
     }
-
     return tokens.access_token;
 }
 
@@ -98,42 +70,28 @@ function formatDate(date) {
 
 
 // --- 核心商業邏輯 ---
-
 async function syncAllSheetsToKV(env) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
     const ranges = ["rooms!A2:I", "inventory_calendar!A2:D", "pricing_rules!A2:C"];
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=${ranges.join("&ranges=")}`;
     const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!response.ok) { 
-        const errorText = await response.text(); 
-        console.error(`[Sync Error] Failed to fetch from Google: ${errorText}`); 
-        throw new Error("Sync failed at Google Sheets fetch.");
-    }
-    
+    if (!response.ok) { const errorText = await response.text(); console.error(`[Sync Error] ${errorText}`); throw new Error("Sync failed"); }
     const data = await response.json();
     const [roomsRange, inventoryRange, pricingRange] = data.valueRanges;
-
-    // 解析 Rooms
     const rooms = (roomsRange.values || []).map(r => ({ id: r[0], name: r[1], description: r[2], price: parseInt(r[3], 10) || 0, fridayPrice: r[4] ? parseInt(r[4], 10) : null, saturdayPrice: r[5] ? parseInt(r[5], 10) : null, totalQuantity: parseInt(r[6], 10) || 0, imageUrl: r[7], isActive: (r[8] || "FALSE").toUpperCase() === "TRUE" })).filter(r => r.id && r.isActive);
     let roomsJsonString = JSON.stringify(rooms);
-    
-    // 清理 BOM 字元
     if (roomsJsonString.charCodeAt(0) === 0xFEFF) {
         roomsJsonString = roomsJsonString.substring(1);
     }
     await env.ROOMS_KV.put("rooms_data", roomsJsonString);
-
-    // 解析 Inventory & Pricing
     const inventoryCalendar = {};
     (inventoryRange.values || []).forEach(r => { const [date, roomId, inventory, close] = r; if (!date || !roomId) return; if (!inventoryCalendar[date]) inventoryCalendar[date] = {}; inventoryCalendar[date][roomId] = { inventory: inventory ? parseInt(inventory, 10) : null, isClosed: (close || "FALSE").toUpperCase() === "TRUE" }; });
     await env.ROOMS_KV.put("inventory_calendar", JSON.stringify(inventoryCalendar));
-    
     const pricingRules = {};
     (pricingRange.values || []).forEach(r => { const [date, roomId, price] = r; if (!date || !roomId || !price) return; if (!pricingRules[date]) pricingRules[date] = {}; pricingRules[date][roomId] = parseInt(price, 10); });
     await env.ROOMS_KV.put("pricing_rules", JSON.stringify(pricingRules));
 }
-
 
 async function fetchAllBookings(env, includeRowNumber = false) {
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
@@ -339,24 +297,7 @@ api.post('/bookings/cancel', async (c) => {
 // 將 API 路由掛載到 /api 路徑下
 app.route('/api', api);
 
-// 靜態檔案服務 (處理所有非 API 的請求)
 app.get('*', serveStatic({ root: './public' }));
 
-
 // Cloudflare Pages 的進入點
-const handler = {
-    async fetch(request, env, ctx) {
-        return app.fetch(request, env, ctx);
-    },
-    async scheduled(event, env, ctx) {
-        console.log("[Cron] Scheduled sync triggered...");
-        try {
-            await syncAllSheetsToKV(env);
-            console.log("[Cron] Scheduled sync completed successfully.");
-        } catch (error) {
-            console.error("[Cron] Scheduled sync failed:", error);
-        }
-    },
-};
-
-export default handler;
+export default app;

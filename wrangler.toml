@@ -1,11 +1,11 @@
 name = "happy-feet-inn-api"
-main = "src/index.js"
+pages_build_output_dir = "public"
 compatibility_date = "2025-08-31" # 你可以使用今天的日期
 
 # 我們未來會在這裡加上 KV 的設定
-# [[kv_namespaces]]
-# binding = "ROOMS_KV"
-# id = "1MOFcdTXg7x1NK-yaYoHHoHwC6NWGbWF4K64wNUmdD1w"
+[[kv_namespaces]]
+binding = "ROOMS_KV"
+id = "26a24683515742918824143a50d753c8"
 
 [vars]
 # 請務必將這裡的 ID 換成你自己的 Google Sheet ID
