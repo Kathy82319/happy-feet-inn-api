@@ -61,7 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(err => console.error("Get profile failed", err));
     }
 
- function fetchRooms() {
+    // --- 【核心修正】還原成你提供的、最穩健的 fetchRooms 版本 ---
+    function fetchRooms() {
         fetch(`${API_BASE_URL}/api/rooms`)
             .then(response => {
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -77,10 +78,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Fetching rooms failed:', error);
                 loadingSpinner.classList.add('hidden');
                 mainContent.classList.remove('hidden');
-                roomListDiv.innerHTML = '<p>載入房型資料失敗，請稍後再試。</p>';
+                roomListDiv.innerHTML = '<p class="error-message">載入房型資料失敗，請稍後再試。</p>';
             });
     }
-    
+
     function createRoomCard(room) {
         const card = document.createElement('div');
         card.className = 'room-card';
