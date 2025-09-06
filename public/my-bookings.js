@@ -38,20 +38,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(err => console.error("Get profile failed", err));
     }
 
-    async function fetchRoomsAndThenBookings() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/rooms`);
-            const rooms = await response.json();
-            rooms.forEach(room => {
-                roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
-            });
-            fetchMyBookings(); // 房型資料準備好後，才去抓訂單
-        } catch (error) {
-            console.error('Fetching rooms failed:', error);
-            // 即使房型資料載入失敗，還是嘗試載入訂單
-            fetchMyBookings();
+    // 位於 public/my-bookings.js
+
+async function fetchRoomsAndThenBookings() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/rooms`);
+
+        // 【偵錯關鍵】根據備忘錄指示，加入詳細的 console.log 來觀察原始 response 物件
+        console.log('API Response from my-bookings.js:', response);
+
+        // 【修正核心】加上 HTTP 狀態碼檢查，這才是 async/await 寫法的最佳實踐
+        if (!response.ok) {
+            // 為了得到更詳細的錯誤，嘗試讀取 response 的文字內容
+            const errorText = await response.text().catch(() => '無法讀取錯誤內容');
+            // 主動拋出一個帶有狀態碼的、更有意義的錯誤
+            throw new Error(`HTTP 請求失敗！ 狀態碼: ${response.status}, 訊息: ${errorText}`);
         }
+
+        const rooms = await response.json();
+        rooms.forEach(room => {
+            roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
+        });
+
+        // 確認房型資料已成功載入快取
+        console.log('房型資料成功快取:', roomDataCache);
+
+        // 房型資料準備好後，才去抓訂單
+        fetchMyBookings();
+
+    } catch (error) {
+        // 【偵錯關鍵】捕捉並印出最完整的錯誤物件，而不只是 error.message
+        console.error('載入房型資料失敗 (fetchRoomsAndThenBookings):', error);
+
+        // 即使房型資料載入失敗，還是要嘗試載入訂單，這是原有的邏輯，予以保留
+        fetchMyBookings();
     }
+}
 
     async function fetchMyBookings() {
         loadingSpinner.classList.remove('hidden');
