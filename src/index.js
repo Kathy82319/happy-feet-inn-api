@@ -234,9 +234,10 @@ async function cancelBookingInSheet(env, bookingId, lineUserId) {
 
 // --- Hono 路由設定 ---
 const app = new Hono();
-const api = new Hono();
 
-// API Endpoints
+// --- API 路由 ---
+// 所有 /api/ 开头的请求都会由这个子路由器处理
+const api = new Hono();
 api.get('/rooms', async (c) => {
     try {
         let roomsDataString = await c.env.ROOMS_KV.get("rooms_data");
@@ -253,17 +254,16 @@ api.get('/rooms', async (c) => {
         return c.json({ error: "Failed to get or parse rooms_data from KV.", details: e.message }, 500);
     }
 });
-
 api.get('/sync', async (c) => {
     try {
         await syncAllSheetsToKV(c.env);
-        return c.text("Manual sync completed successfully!");
+        // 为了避免 MIME Type 错误，我们回传一个简单的 JSON 成功讯息
+        return c.json({ success: true, message: "Manual sync completed successfully!" });
     } catch (e) {
         console.error("Error during sync:", e);
         return c.json({ error: e.message }, 500);
     }
 });
-
 api.get('/my-bookings', async (c) => {
     const { lineUserId } = c.req.query();
     if (!lineUserId) return c.json({ error: "Missing lineUserId" }, 400);
@@ -271,21 +271,18 @@ api.get('/my-bookings', async (c) => {
     const myBookings = allBookings.filter(b => b.lineUserId === lineUserId);
     return c.json(myBookings);
 });
-
 api.get('/availability', async (c) => {
     const { roomId, startDate, endDate } = c.req.query();
     if (!roomId || !startDate || !endDate) return c.json({ error: "Missing required parameters" }, 400);
     const availability = await getAvailabilityForRoom(c.env, roomId, startDate, endDate);
     return c.json(availability);
 });
-
 api.get('/calculate-price', async (c) => {
     const { roomId, startDate, endDate } = c.req.query();
     if (!roomId || !startDate || !endDate) return c.json({ error: "Missing required parameters" }, 400);
     const totalPrice = await calculateTotalPrice(c.env, roomId, startDate, endDate);
     return c.json({ totalPrice });
 });
-
 api.post('/bookings', async (c) => {
     const bookingData = await c.req.json();
     if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
@@ -294,27 +291,19 @@ api.post('/bookings', async (c) => {
     const newBookingId = await writeBookingToSheet(c.env, bookingData);
     return c.json({ success: true, bookingId: newBookingId }, 201);
 });
-
 api.post('/bookings/cancel', async (c) => {
-    const { bookingId, lineUserId } = await c.req.query();
+    const { bookingId, lineUserId } = await c.req.json();
     if (!bookingId || !lineUserId) return c.json({ error: "Missing bookingId or lineUserId" }, 400);
     await cancelBookingInSheet(c.env, bookingId, lineUserId);
     return c.json({ success: true, message: "Booking cancelled successfully" });
 });
 
-
 // 将 API 路由挂载到 /api 路径下
 app.route('/api', api);
 
 // --- 静态档案服务 ---
-// 优先处理静态档案，例如 /style.css, /liff-app.js 等
+// 最后，处理所有其他请求，将它们视为对 public 资料夹内档案的请求
 app.get('*', serveStatic({ root: './public' }));
-
-// --- 单页应用 (SPA) 备援路由 ---
-// 如果上面的静态档案服务找不到对应的档案 (例如 /my-bookings)，则回传 index.html
-app.get('*', (c) => {
-  return c.env.ASSETS.fetch(new Request(new URL('/index.html', c.req.url), c.req));
-});
 
 
 // --- Cloudflare Pages 的进入点 ---
