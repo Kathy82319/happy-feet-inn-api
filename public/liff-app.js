@@ -268,6 +268,8 @@ async function handleDateChange(e) {
     }
 }
 
+// 位於 public/liff-app.js
+
 async function submitBooking() {
     if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
         bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
@@ -301,11 +303,9 @@ async function submitBooking() {
             throw new Error(result.error || '訂房失敗，請稍後再試');
         }
 
-        // --- 【新增】訂房成功後，呼叫發送訊息的邏輯 ---
-        // result.bookingDetails 就是我們後端回傳的完整訂單資訊
-        await sendBookingConfirmation(result.bookingDetails); 
+        // --- 【修改處】呼叫時，將 LIFF_ID 一起傳入 ---
+        await sendBookingConfirmation(result.bookingDetails, LIFF_ID); 
 
-        // --- 【修改】更新成功訊息的提示文字 ---
         submitBookingButton.textContent = '訂房成功！';
         submitBookingButton.style.backgroundColor = '#00B900';
         bookingErrorEl.textContent = '';
@@ -313,11 +313,10 @@ async function submitBooking() {
 
         setTimeout(() => {
             closeBookingModal();
-            // 也可以選擇重新載入頁面 window.location.reload();
         }, 3000);
 
     } catch (error) {
-        bookingErrorEl.textContent = `錯誤：${error.message}`;
+        bookingErrorEl.textContent = `發生錯誤：${error.message}`;
         submitBookingButton.disabled = false;
         submitBookingButton.textContent = '確認訂房';
     }
@@ -388,8 +387,7 @@ try {
 // 位於 public/liff-app.js，放在 submitBooking 函式的下面
 
 // --- 【請用這個完整版本，取代你檔案中現有的 sendBookingConfirmation 函式】 ---
-async function sendBookingConfirmation(details) {
-    // 檢查是否在 LINE 環境內，sendMessages 只能在 LINE App 中使用
+async function sendBookingConfirmation(details, liffId) {
     if (!liff.isInClient()) {
         console.log('不在 LINE 環境中，略過發送訊息。');
         return;
@@ -397,7 +395,6 @@ async function sendBookingConfirmation(details) {
 
     const nights = (new Date(details.checkOutDate) - new Date(details.checkInDate)) / (1000 * 60 * 60 * 24);
 
-    // --- 這是 LINE Flex Message 的完整 JSON 結構 ---
     const flexMessage = {
         "type": "bubble",
         "header": {
@@ -417,6 +414,7 @@ async function sendBookingConfirmation(details) {
             "aspectMode": "cover"
         },
         "body": {
+            // ... body 內容不變 ...
             "type": "box",
             "layout": "vertical",
             "contents": [
@@ -452,10 +450,11 @@ async function sendBookingConfirmation(details) {
             "layout": "vertical",
             "spacing": "sm",
             "contents": [
-                { "type": "button", "style": "link", "height": "sm", "action": {
-                    "type": "uri",
-                    "label": "查看我的所有訂單",
-                    "uri": `https://liff.line.me/${LIFF_ID}/my-bookings.html`
+                { "type": "button", "style": "link", "height": "sm", "action": { 
+                    "type": "uri", 
+                    "label": "查看我的所有訂單", 
+                    // --- 【修改處】使用傳進來的 liffId 參數 ---
+                    "uri": `https://liff.line.me/${liffId}/my-bookings.html`
                 }},
                 { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" }
             ],
@@ -463,15 +462,16 @@ async function sendBookingConfirmation(details) {
         }
     };
 
-    // 在偵錯模式下，我們不自己處理 try...catch，讓錯誤向上拋出
-    // 這樣才能被 submitBooking 函式中的偵錯機制捕捉到
-    await liff.sendMessages([{
-        type: 'flex',
-        altText: `您的訂單 ${details.bookingId} 已成立！`,
-        contents: flexMessage
-    }]);
-
-    console.log('發送確認訊息成功!');
+    try {
+        await liff.sendMessages([{
+            type: 'flex',
+            altText: `您的訂單 ${details.bookingId} 已成立！`,
+            contents: flexMessage
+        }]);
+        console.log('發送確認訊息成功!');
+    } catch (error) {
+        console.error('發送確認訊息失敗:', error);
+    }
 }
 
 // --- 【新增】專門用來發送偵錯訊息的函式 ---
