@@ -238,18 +238,19 @@ const api = new Hono();
 
 // API Endpoints
 api.get('/rooms', async (c) => {
-    let roomsDataString = await c.env.ROOMS_KV.get("rooms_data");
-    if (!roomsDataString) {
-        return c.json({ error: "KV value for rooms_data is null." }, 500);
-    }
-    if (roomsDataString.charCodeAt(0) === 0xFEFF) {
-        roomsDataString = roomsDataString.substring(1);
-    }
     try {
-        const roomsData = JSON.parse(roomsDataString);
-        return c.json(roomsData);
+        let roomsDataString = await c.env.ROOMS_KV.get("rooms_data");
+        if (!roomsDataString) {
+            console.error("[API /rooms] KV value for rooms_data is null.");
+            return c.json({ error: "KV value for rooms_data is null." }, 500);
+        }
+        if (roomsDataString.charCodeAt(0) === 0xFEFF) {
+            roomsDataString = roomsDataString.substring(1);
+        }
+        return c.json(JSON.parse(roomsDataString));
     } catch (e) {
-        return c.json({ error: "Failed to parse rooms_data from KV.", details: e.message }, 500);
+        console.error("[API /rooms] Error:", e);
+        return c.json({ error: "Failed to get or parse rooms_data from KV.", details: e.message }, 500);
     }
 });
 
@@ -295,16 +296,26 @@ api.post('/bookings', async (c) => {
 });
 
 api.post('/bookings/cancel', async (c) => {
-    const { bookingId, lineUserId } = await c.req.json();
+    const { bookingId, lineUserId } = await c.req.query();
     if (!bookingId || !lineUserId) return c.json({ error: "Missing bookingId or lineUserId" }, 400);
     await cancelBookingInSheet(c.env, bookingId, lineUserId);
     return c.json({ success: true, message: "Booking cancelled successfully" });
 });
 
-// 將 API 路由掛載到 /api 路徑下
+
+// 将 API 路由挂载到 /api 路径下
 app.route('/api', api);
 
+// --- 静态档案服务 ---
+// 优先处理静态档案，例如 /style.css, /liff-app.js 等
 app.get('*', serveStatic({ root: './public' }));
 
-// Cloudflare Pages 的進入點
+// --- 单页应用 (SPA) 备援路由 ---
+// 如果上面的静态档案服务找不到对应的档案 (例如 /my-bookings)，则回传 index.html
+app.get('*', (c) => {
+  return c.env.ASSETS.fetch(new Request(new URL('/index.html', c.req.url), c.req));
+});
+
+
+// --- Cloudflare Pages 的进入点 ---
 export default app;
