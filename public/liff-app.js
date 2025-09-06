@@ -223,6 +223,51 @@ function initializeDatepicker() {
     dateRangePickerEl.addEventListener('changeDate', handleDateChange);
 }
 
+async function handleDateChange(e) {
+    // 重置狀態
+    priceCalculationEl.textContent = '';
+    submitBookingButton.disabled = true;
+
+    if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
+        availabilityResultEl.textContent = '請選擇退房日期';
+        return;
+    }
+
+    selectedDates = e.detail.date;
+    selectedDates.sort((a, b) => a - b);
+    const dates = selectedDates.map(date => formatDate(date));
+    const [startDate, endDate] = dates;
+
+    availabilityResultEl.textContent = '正在查詢空房與價格...';
+
+    try {
+        const startDateObj = new Date(startDate);
+        const endDateObj = new Date(endDate);
+        const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+        const availabilityResponse = await fetch(availabilityUrl);
+        if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
+        const availabilityData = await availabilityResponse.json();
+        if (availabilityData.error) throw new Error(availabilityData.error);
+
+        if (availabilityData.availableCount > 0) {
+            const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+            const priceResponse = await fetch(priceUrl);
+            if (!priceResponse.ok) throw new Error('價格計算失敗');
+            const priceData = await priceResponse.json();
+            finalTotalPrice = priceData.totalPrice;
+            const nights = (endDateObj - startDateObj) / (1000 * 60 * 60 * 24);
+            availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
+            priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
+            submitBookingButton.disabled = false;
+        } else {
+            availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
+        }
+    } catch (error) {
+        availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
+        console.error("API check failed:", error);
+    }
+}
+
 async function submitBooking() {
     if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
         bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
