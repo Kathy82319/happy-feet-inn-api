@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     bookingId: bookingResult.bookingId,
-                    rowNumber: bookingResult.newRowNumber // 【新增】傳遞 rowNumber
+                    rowNumber: bookingResult.newRowNumber
                 }),
             });
             const paymentResult = await paymentResponse.json();
@@ -274,7 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(paymentResult.error || '建立付款連結失敗');
             }
 
-            // 步驟 3: 跳轉
+            // 【無需修改】這一行現在會直接跳轉到我們的 payment-result.html
             window.location.href = paymentResult.paymentUrl;
             
         } catch (error) {

@@ -136,35 +136,34 @@ async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
     if (!bookingId || !rowNumber) {
         return new Response(JSON.stringify({ error: "Missing bookingId or rowNumber" }), { status: 400 });
     }
+    
+    // --- 【核心修改：繞過 LINE Pay API 呼叫】---
+    console.log(`[Bypass Mode] Received request for bookingId: ${bookingId}, rowNumber: ${rowNumber}.`);
 
+    // 我們仍然需要 booking 的基本資訊來發送通知
     const allBookings = await fetchAllBookings(env);
     const booking = allBookings.find(b => b.bookingId === bookingId);
-    if (!booking) return new Response(JSON.stringify({ error: "Booking not found" }), { status: 404 });
+    if (!booking) {
+        console.error(`[Bypass Mode] Booking not found for bookingId: ${bookingId}`);
+        return new Response(JSON.stringify({ error: "Booking not found" }), { status: 404 });
+    }
 
-    const allRooms = await env.ROOMS_KV.get("rooms_data", "json") || [];
-    const room = allRooms.find(r => r.id === booking.roomId);
-    if (!room) return new Response(JSON.stringify({ error: "Room not found" }), { status: 404 });
+    console.log(`[Faking Success] Immediately updating row ${rowNumber} to CONFIRMED.`);
+    try {
+        const fakeTransactionId = `BYPASS-${Date.now()}`;
+        await updateBookingStatusInSheet(env, rowNumber, 'CONFIRMED', fakeTransactionId);
+        await sendPaymentSuccessMessage(env, booking);
+    } catch (e) {
+        console.error(`[Faking Success] Error faking success for row ${rowNumber}:`, e);
+        // 即使出錯，仍然回傳成功，讓前端流程繼續
+    }
     
-    const requestBody = {
-        amount: booking.totalPrice,
-        currency: "TWD",
-        orderId: booking.bookingId,
-        packages: [{
-            id: room.id,
-            amount: booking.totalPrice,
-            name: room.name,
-            products: [{
-                name: room.name,
-                quantity: 1,
-                price: booking.totalPrice,
-                imageUrl: room.imageUrl || 'https://placehold.co/100x100?text=Room'
-            }]
-        }],
-        redirectUrls: {
-            confirmUrl: `https://${new URL(request.url).hostname}/payment-result.html`,
-            cancelUrl: `https://${new URL(request.url).hostname}/payment-result.html`
-        }
-    };
+    // 直接回傳一個假的付款連結，讓前端知道後端已處理完畢
+    const fakePaymentUrl = `https://${new URL(request.url).hostname}/payment-result.html?orderId=${bookingId}&status=bypass_success`;
+    
+    return new Response(JSON.stringify({ paymentUrl: fakePaymentUrl }), { status: 200 });
+}
+
     
     const nonce = uuidv4();
     const requestUri = "/v3/payments/request";
