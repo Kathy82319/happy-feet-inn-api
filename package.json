@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "jose": "^5.0.0",
-    "uuid": "^9.0.1" 
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "esbuild": "^0.21.4",
