@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const bookingListDiv = document.getElementById('booking-list');
     const noBookingMessage = document.getElementById('no-booking-message');
 
+    // --- 【新增】輪詢功能的變數 ---
+    let pollingInterval;
+    let pollingCount = 0;
+    const MAX_POLLING_COUNT = 5; // 最多輪詢 5 次 (約 10 秒)
+
     function main() {
         liff.init({ liffId: LIFF_ID })
             .then(() => {
@@ -90,18 +95,46 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+ // --- 【新增】輪詢的啟動與停止邏輯 ---
+    function startPolling(bookingId) {
+        // 先清除可能存在的舊計時器
+        stopPolling(); 
+        
+        console.log(`Starting to poll for booking ID: ${bookingId}`);
+        pollingInterval = setInterval(async () => {
+            pollingCount++;
+            console.log(`Polling attempt #${pollingCount}`);
+            
+            // 重新拉取一次訂單資料
+            await fetchMyBookings();
+            
+            // 檢查目標訂單的狀態是否已更新
+            const targetCard = document.querySelector(`.booking-card[data-booking-id="${bookingId}"]`);
+            const statusBadge = targetCard ? targetCard.querySelector('.status-badge') : null;
+
+            // 如果狀態已變成 '已確認' 或輪詢次數過多，就停止
+            if ((statusBadge && statusBadge.textContent === '已確認') || pollingCount >= MAX_POLLING_COUNT) {
+                stopPolling();
+            }
+        }, 1000); // 每 2 秒檢查一次
+    }
+
+      function stopPolling() {
+        if (pollingInterval) {
+            console.log('Stopping polling.');
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+            pollingCount = 0;
+        }
+    }
+
     function getStatusText(status) {
         switch (status) {
-            case 'PENDING_PAYMENT':
-                return '尚未付款';
-            case 'CONFIRMED':
-                return '已確認';
-            case 'CANCELLED':
-                return '已取消';
-            case 'COMPLETED':
-                return '已完成';
-            default:
-                return status;
+            case 'PENDING_PAYMENT': return '尚未付款';
+            case 'CONFIRMED': return '已確認';
+            case 'CANCELLED': return '已取消';
+            case 'COMPLETED': return '已完成';
+            default: return status;
         }
     }
 

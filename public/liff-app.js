@@ -272,10 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 步驟 3: 將使用者導向 LINE Pay 付款頁面
             // 使用 liff.openWindow 在 LIFF 環境中體驗更好
-            liff.openWindow({
-                url: paymentResult.paymentUrl,
-                external: true
-            });
+            window.location.href = paymentResult.paymentUrl;
             
             closeBookingModal();
 
