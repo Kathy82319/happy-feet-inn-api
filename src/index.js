@@ -259,7 +259,7 @@ async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
     const allBookings = await fetchAllBookings(env);
     const booking = allBookings.find(b => b.bookingId === bookingId);
     if (!booking) return new Response(JSON.stringify({ error: "Booking not found" }), { status: 404 });
-
+ 
     const allRooms = await env.ROOMS_KV.get("rooms_data", "json") || [];
     const room = allRooms.find(r => r.id === booking.roomId);
     if (!room) return new Response(JSON.stringify({ error: "Room not found for this booking" }), { status: 404 });
