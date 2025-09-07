@@ -247,6 +247,12 @@ async function handlePaymentWebhook(request, env) {
 
 // --- 建立付款請求 ---
 async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
+    console.log("Available environment variables:", Object.keys(env).join(', '));
+        if (!env.LINE_PAY_CHANNEL_ID || !env.LINE_PAY_CHANNEL_SECRET) {
+        const errorMessage = "LINE Pay configuration error: Channel ID or Secret is missing in the environment.";
+        console.error(errorMessage);
+        return new Response(JSON.stringify({ error: errorMessage }), { status: 500 });
+    }
     const { bookingId } = await request.json();
     if (!bookingId) return new Response(JSON.stringify({ error: "Missing bookingId" }), { status: 400 });
 
