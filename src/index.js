@@ -246,20 +246,29 @@ async function handlePaymentWebhook(request, env) {
 }
 
 // --- 建立付款請求 ---
+// --- 建立付款請求 ---
 async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
-    console.log("Available environment variables:", Object.keys(env).join(', '));
-        if (!env.LINE_PAY_CHANNEL_ID || !env.LINE_PAY_CHANNEL_SECRET) {
+    // --- 【最終偵錯指令：直接印出變數值】---
+    console.log("--- Start Environment Variable Debug ---");
+    console.log(`Value of LINE_PAY_CHANNEL_ID: ${env.LINE_PAY_CHANNEL_ID}`);
+    console.log(`Value of LINE_PAY_CHANNEL_SECRET: ${env.LINE_PAY_CHANNEL_SECRET}`);
+    console.log("--- End Environment Variable Debug ---");
+    // --- 偵錯指令結束 ---
+
+    // --- 在函式開頭加入環境變數的防禦性檢查 ---
+    if (!env.LINE_PAY_CHANNEL_ID || !env.LINE_PAY_CHANNEL_SECRET) {
         const errorMessage = "LINE Pay configuration error: Channel ID or Secret is missing in the environment.";
         console.error(errorMessage);
         return new Response(JSON.stringify({ error: errorMessage }), { status: 500 });
     }
+    
     const { bookingId } = await request.json();
     if (!bookingId) return new Response(JSON.stringify({ error: "Missing bookingId" }), { status: 400 });
 
     const allBookings = await fetchAllBookings(env);
     const booking = allBookings.find(b => b.bookingId === bookingId);
     if (!booking) return new Response(JSON.stringify({ error: "Booking not found" }), { status: 404 });
- 
+
     const allRooms = await env.ROOMS_KV.get("rooms_data", "json") || [];
     const room = allRooms.find(r => r.id === booking.roomId);
     if (!room) return new Response(JSON.stringify({ error: "Room not found for this booking" }), { status: 404 });
@@ -312,7 +321,6 @@ async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
         return new Response(JSON.stringify({ error: `LINE Pay Error: ${data.returnMessage}` }), { status: 500 });
     }
 }
-
 
 // =================================================================
 // Google Sheets 與 LINE API 互動函式 (Interactions)
