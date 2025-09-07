@@ -324,14 +324,31 @@ header h1 {
     padding: 0;
     overflow: hidden;
 }
+
+/* --- 【關鍵修改】調整叉叉按鈕樣式 --- */
 #room-details-modal .close-button {
+    position: absolute; /* 相對於 modal-content 定位 */
+    top: 8px;
+    right: 8px;
     z-index: 10;
-    color: #fff;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    width: 40px; /* 設定固定寬度 */
+    height: 40px; /* 設定固定高度 */
+    border-radius: 50%; /* 變成圓形 */
+    background-color: rgba(0, 0, 0, 0.5); /* 半透明黑色背景 */
+    color: #fff; /* 白色叉叉 */
+    font-size: 28px; /* 加大叉叉字體 */
+    font-weight: normal;
+    line-height: 40px; /* 垂直置中 */
+    text-align: center; /* 水平置中 */
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
 }
 #room-details-modal .close-button:hover {
-    color: #eee;
+    background-color: rgba(0, 0, 0, 0.8);
+    transform: scale(1.1); /* 懸停時放大一點點 */
 }
+
+
 #details-content {
     display: flex;
     flex-direction: column;

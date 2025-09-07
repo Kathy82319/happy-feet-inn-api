@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let lineProfile = {}, selectedRoom = {}, datepicker, finalTotalPrice = 0;
     let selectedDates = []; 
     
+    // --- 【修改】將 detailsModal 的宣告移到前面 ---
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
     const userNameSpan = document.getElementById('user-name');
@@ -29,8 +30,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const guestPhoneInput = document.getElementById('guest-phone');
     const submitBookingButton = document.getElementById('submit-booking-button');
     const bookingErrorEl = document.getElementById('booking-error');
-    const closeButton = document.querySelector('.close-button');
-
+    const bookingCloseButton = bookingModal.querySelector('.close-button');
+    const detailsModal = document.getElementById('room-details-modal');
+    const detailsCloseButton = detailsModal.querySelector('.close-button');
     
 
     function main() {
@@ -73,26 +75,25 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
-function createRoomCard(room) {
-    const card = document.createElement('div');
-    card.className = 'room-card';
-    card.innerHTML = `
-        <img src="${room.imageUrl || 'https://placehold.co/600x400?text=No+Image'}" alt="${room.name}">
-        <div class="room-card-content">
-            <h3>${room.name}</h3>
-            <p class="price">NT$ ${room.price} <span>起 / 每晚</span></p>
-            <p>${room.description || '暫無詳細描述。'}</p>
-            <div class="card-actions">
-                <button class="cta-button secondary details-button">查看詳情</button>
-                <button class="cta-button booking-button">立即預訂</button>
+    function createRoomCard(room) {
+        const card = document.createElement('div');
+        card.className = 'room-card';
+        card.innerHTML = `
+            <img src="${room.imageUrl || 'https://placehold.co/600x400?text=No+Image'}" alt="${room.name}">
+            <div class="room-card-content">
+                <h3>${room.name}</h3>
+                <p class="price">NT$ ${room.price} <span>起 / 每晚</span></p>
+                <p>${room.description || '暫無詳細描述。'}</p>
+                <div class="card-actions">
+                    <button class="cta-button secondary details-button">查看詳情</button>
+                    <button class="cta-button booking-button">立即預訂</button>
+                </div>
             </div>
-        </div>
-    `;
-    // 【修改】為兩個按鈕分別綁定事件
-    card.querySelector('.details-button').addEventListener('click', () => openRoomDetailsModal(room));
-    card.querySelector('.booking-button').addEventListener('click', () => openBookingModal(room));
-    return card;
-}
+        `;
+        card.querySelector('.details-button').addEventListener('click', () => openRoomDetailsModal(room));
+        card.querySelector('.booking-button').addEventListener('click', () => openBookingModal(room));
+        return card;
+    }
 
     async function openBookingModal(room) {
         selectedRoom = room;
@@ -108,91 +109,78 @@ function createRoomCard(room) {
         guestPhoneInput.value = '';
         initializeDatepicker();
         bookingModal.classList.remove('hidden');
-        const today = new Date();
-
-
-        initializeDatepicker();
-        bookingModal.classList.remove('hidden');
     }
+    
+    // --- 【修改】加入 history.pushState 來改變網址與歷史紀錄 ---
+    async function openRoomDetailsModal(room) {
+        const detailsContent = document.getElementById('details-content');
+        detailsContent.innerHTML = '<p>正在載入房型詳細資訊...</p>';
+        detailsModal.classList.remove('hidden');
+        
+        // 新增一筆歷史紀錄，並在 URL 加上 #details
+        history.pushState({ modal: 'details' }, `房型詳情: ${room.name}`, '#details');
 
-    // --- 【新增】打開房型詳細視窗的函式 ---
-async function openRoomDetailsModal(room) {
-    const modal = document.getElementById('room-details-modal');
-    const detailsContent = document.getElementById('details-content');
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/room-details?roomId=${room.id}`);
+            if (!response.ok) throw new Error('無法取得房型資料');
+            const roomDetails = await response.json();
+            const images = [roomDetails.imageUrl, roomDetails.imageUrl_2, roomDetails.imageUrl_3].filter(img => img);
+            const galleryHTML = images.map((img, index) => `
+                <div class="slide ${index === 0 ? 'active' : ''}">
+                    <img src="${img}" alt="${roomDetails.name} picture ${index + 1}">
+                </div>
+            `).join('');
 
-    detailsContent.innerHTML = '<p>正在載入房型詳細資訊...</p>';
-    modal.classList.remove('hidden');
+            detailsContent.innerHTML = `
+                <div class="details-gallery">
+                    ${galleryHTML}
+                    ${images.length > 1 ? '<button class="gallery-nav prev">&lt;</button><button class="gallery-nav next">&gt;</button>' : ''}
+                </div>
+                <div class="details-info">
+                    <h2>${roomDetails.name}</h2>
+                    <p class="price">平日 NT$ ${roomDetails.price.toLocaleString()} 起</p>
+                    <p class="description">${roomDetails.detailedDescription || roomDetails.description || '此房型暫無更詳細的描述。'}</p>
+                    <button id="modal-book-now" class="cta-button">立即預訂</button>
+                </div>
+            `;
 
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/room-details?roomId=${room.id}`);
-        if (!response.ok) throw new Error('無法取得房型資料');
-        const roomDetails = await response.json();
+            document.getElementById('modal-book-now').addEventListener('click', () => {
+                // 這裡我們不直接關閉，而是觸發返回，讓 popstate 監聽器去關閉
+                history.back();
+                openBookingModal(room);
+            });
 
-        // --- 【升級】建立圖片陣列，並過濾掉空的圖片網址 ---
-        const images = [roomDetails.imageUrl, roomDetails.imageUrl_2, roomDetails.imageUrl_3].filter(img => img);
+            if (images.length > 1) {
+                let currentSlide = 0;
+                const slides = detailsContent.querySelectorAll('.slide');
+                const nextBtn = detailsContent.querySelector('.gallery-nav.next');
+                const prevBtn = detailsContent.querySelector('.gallery-nav.prev');
 
-        // --- 【升級】產生圖片輪播的 HTML ---
-        const galleryHTML = images.map((img, index) => `
-            <div class="slide ${index === 0 ? 'active' : ''}">
-                <img src="${img}" alt="${roomDetails.name} picture ${index + 1}">
-            </div>
-        `).join('');
+                function showSlide(index) {
+                    slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+                }
 
-        detailsContent.innerHTML = `
-            <div class="details-gallery">
-                ${galleryHTML}
-                ${images.length > 1 ? '<button class="gallery-nav prev">&lt;</button><button class="gallery-nav next">&gt;</button>' : ''}
-            </div>
-            <div class="details-info">
-                <h2>${roomDetails.name}</h2>
-                <p class="price">平日 NT$ ${roomDetails.price.toLocaleString()} 起</p>
-                <p class="description">${roomDetails.detailedDescription || roomDetails.description || '此房型暫無更詳細的描述。'}</p>
-                <button id="modal-book-now" class="cta-button">立即預訂</button>
-            </div>
-        `;
+                nextBtn.addEventListener('click', () => {
+                    currentSlide = (currentSlide + 1) % images.length;
+                    showSlide(currentSlide);
+                });
 
-        document.getElementById('modal-book-now').addEventListener('click', () => {
-            modal.classList.add('hidden');
-            openBookingModal(room);
-        });
-
-        // --- 【新增】讓圖片輪播按鈕動起來 ---
-        if (images.length > 1) {
-            let currentSlide = 0;
-            const slides = detailsContent.querySelectorAll('.slide');
-            const nextBtn = detailsContent.querySelector('.gallery-nav.next');
-            const prevBtn = detailsContent.querySelector('.gallery-nav.prev');
-
-            function showSlide(index) {
-                slides.forEach((slide, i) => {
-                    slide.classList.toggle('active', i === index);
+                prevBtn.addEventListener('click', () => {
+                    currentSlide = (currentSlide - 1 + images.length) % images.length;
+                    showSlide(currentSlide);
                 });
             }
 
-            nextBtn.addEventListener('click', () => {
-                currentSlide = (currentSlide + 1) % images.length;
-                showSlide(currentSlide);
-            });
-
-            prevBtn.addEventListener('click', () => {
-                currentSlide = (currentSlide - 1 + images.length) % images.length;
-                showSlide(currentSlide);
-            });
+        } catch (error) {
+            console.error('Fetch room details failed:', error);
+            detailsContent.innerHTML = '<p class="error-message">載入失敗，請稍後再試。</p>';
         }
-
-    } catch (error) {
-        console.error('Fetch room details failed:', error);
-        detailsContent.innerHTML = '<p class="error-message">載入失敗，請稍後再試。</p>';
     }
-}
 
-// --- 【修正核心】將關閉按鈕的事件監聽，移到 liff-app.js 的主要邏輯區 ---
-// 找到檔案中其他的 closeButton.addEventListener... 把它們放在一起，會比較好管理
-const detailsModal = document.getElementById('room-details-modal');
-detailsModal.querySelector('.close-button').addEventListener('click', () => {
-    detailsModal.classList.add('hidden');
-});
-    
+    // --- 【新增】一個統一的關閉詳情視窗函式 ---
+    function closeRoomDetailsModal() {
+        detailsModal.classList.add('hidden');
+    }
 
     function closeBookingModal() {
         bookingModal.classList.add('hidden');
@@ -202,190 +190,127 @@ detailsModal.querySelector('.close-button').addEventListener('click', () => {
         }
     }
 
-    // public/liff-app.js
-
-function initializeDatepicker() {
-    if (datepicker) datepicker.destroy();
-    const Datepicker = window.Datepicker;
-    if (!Datepicker) {
-        console.error("Datepicker library not loaded!");
-        return;
-    }
-    datepicker = new Datepicker(dateRangePickerEl, {
-        language: 'zh-TW',
-        format: 'yyyy-mm-dd',
-        autohide: true,
-        todayHighlight: true,
-        minDate: new Date(),
-        maxNumberOfDates: 2,
-        buttonClass: 'btn',
-    });
-    dateRangePickerEl.addEventListener('changeDate', handleDateChange);
-}
-
-async function handleDateChange(e) {
-    // 重置狀態
-    priceCalculationEl.textContent = '';
-    submitBookingButton.disabled = true;
-
-    if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
-        availabilityResultEl.textContent = '請選擇退房日期';
-        return;
-    }
-
-    selectedDates = e.detail.date;
-    selectedDates.sort((a, b) => a - b);
-    const dates = selectedDates.map(date => formatDate(date));
-    const [startDate, endDate] = dates;
-
-    availabilityResultEl.textContent = '正在查詢空房與價格...';
-
-    try {
-        const startDateObj = new Date(startDate);
-        const endDateObj = new Date(endDate);
-        const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
-        const availabilityResponse = await fetch(availabilityUrl);
-        if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
-        const availabilityData = await availabilityResponse.json();
-        if (availabilityData.error) throw new Error(availabilityData.error);
-
-        if (availabilityData.availableCount > 0) {
-            const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
-            const priceResponse = await fetch(priceUrl);
-            if (!priceResponse.ok) throw new Error('價格計算失敗');
-            const priceData = await priceResponse.json();
-            finalTotalPrice = priceData.totalPrice;
-            const nights = (endDateObj - startDateObj) / (1000 * 60 * 60 * 24);
-            availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
-            priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
-            submitBookingButton.disabled = false;
-        } else {
-            availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
+    function initializeDatepicker() {
+        if (datepicker) datepicker.destroy();
+        const Datepicker = window.Datepicker;
+        if (!Datepicker) {
+            console.error("Datepicker library not loaded!");
+            return;
         }
-    } catch (error) {
-        availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
-        console.error("API check failed:", error);
-    }
-}
-
-// 位於 public/liff-app.js
-
-// --- 【請用這個乾淨版本，取代現有的 submitBooking 函式】 ---
-async function submitBooking() {
-    if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
-        bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
-        return;
-    }
-
-    submitBookingButton.disabled = true;
-    submitBookingButton.textContent = '正在為您處理...';
-    const dates = selectedDates.map(date => formatDate(date));
-    const [startDate, endDate] = dates;
-
-    const bookingData = {
-        lineUserId: lineProfile.userId,
-        lineDisplayName: lineProfile.displayName,
-        roomId: selectedRoom.id,
-        checkInDate: startDate,
-        checkOutDate: endDate,
-        guestName: guestNameInput.value,
-        guestPhone: guestNameInput.value,
-        totalPrice: finalTotalPrice,
-    };
-
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/bookings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(bookingData),
+        datepicker = new Datepicker(dateRangePickerEl, {
+            language: 'zh-TW',
+            format: 'yyyy-mm-dd',
+            autohide: true,
+            todayHighlight: true,
+            minDate: new Date(),
+            maxNumberOfDates: 2,
+            buttonClass: 'btn',
         });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.error || '訂房失敗，請稍後再試');
+        dateRangePickerEl.addEventListener('changeDate', handleDateChange);
+    }
+
+    async function handleDateChange(e) {
+        priceCalculationEl.textContent = '';
+        submitBookingButton.disabled = true;
+        if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
+            availabilityResultEl.textContent = '請選擇退房日期';
+            return;
         }
+        selectedDates = e.detail.date.sort((a, b) => a - b);
+        const [startDate, endDate] = selectedDates.map(formatDate);
+        availabilityResultEl.textContent = '正在查詢空房與價格...';
 
-        // 訂房成功後，呼叫發送訊息的邏輯
-        await sendBookingConfirmation(result.bookingDetails, LIFF_ID); 
+        try {
+            const availabilityUrl = `${API_BASE_URL}/api/availability?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+            const availabilityResponse = await fetch(availabilityUrl);
+            if (!availabilityResponse.ok) throw new Error('查詢空房請求失敗');
+            const availabilityData = await availabilityResponse.json();
+            if (availabilityData.error) throw new Error(availabilityData.error);
 
-        // 恢復成最終的成功訊息與自動關閉流程
-        submitBookingButton.textContent = '訂房成功！';
-        submitBookingButton.style.backgroundColor = '#181c53';
-        bookingErrorEl.textContent = '';
-        availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出，確認訊息已發送至您的 LINE！ 3 秒後將關閉視窗。`;
-
-        setTimeout(() => {
-            closeBookingModal();
-        }, 3000);
-
-    } catch (error) {
-        bookingErrorEl.textContent = `發生錯誤：${error.message}`;
-        submitBookingButton.disabled = false;
-        submitBookingButton.textContent = '確認訂房';
+            if (availabilityData.availableCount > 0) {
+                const priceUrl = `${API_BASE_URL}/api/calculate-price?roomId=${selectedRoom.id}&startDate=${startDate}&endDate=${endDate}`;
+                const priceResponse = await fetch(priceUrl);
+                if (!priceResponse.ok) throw new Error('價格計算失敗');
+                const priceData = await priceResponse.json();
+                finalTotalPrice = priceData.totalPrice;
+                const nights = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
+                availabilityResultEl.textContent = `✓ 太棒了！您選擇的期間還有 ${availabilityData.availableCount} 間空房。`;
+                priceCalculationEl.textContent = `共 ${nights} 晚，總計 NT$ ${finalTotalPrice.toLocaleString()}`;
+                submitBookingButton.disabled = false;
+            } else {
+                availabilityResultEl.textContent = '✗ 抱歉，您選擇的日期已客滿。';
+            }
+        } catch (error) {
+            availabilityResultEl.textContent = '✗ 查詢失敗，請稍後再試。';
+            console.error("API check failed:", error);
+        }
     }
-}
 
-async function submitBooking() {
-    if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
-        bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
-        return;
-    }
-
-    submitBookingButton.disabled = true;
-    submitBookingButton.textContent = '正在為您處理...';
-    const dates = selectedDates.map(date => formatDate(date));
-    const [startDate, endDate] = dates;
-
+    async function submitBooking() {
+        if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
+            bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
+            return;
+        }
+        submitBookingButton.disabled = true;
+        submitBookingButton.textContent = '正在為您處理...';
+        const [checkInDate, checkOutDate] = selectedDates.map(formatDate);
         const bookingData = {
             lineUserId: lineProfile.userId,
             lineDisplayName: lineProfile.displayName,
             roomId: selectedRoom.id,
-            checkInDate: startDate,
-            checkOutDate: endDate,
+            checkInDate, checkOutDate,
             guestName: guestNameInput.value,
             guestPhone: guestPhoneInput.value,
             totalPrice: finalTotalPrice,
         };
 
-try {
-        const response = await fetch(`${API_BASE_URL}/api/bookings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(bookingData),
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            // 如果後端回傳錯誤，也把它當成一個錯誤來發送
-            throw new Error(`後端錯誤: ${result.error || '訂房失敗，請稍後再試'}`);
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/bookings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bookingData),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || '訂房失敗，請稍後再試');
+            }
+            await sendBookingConfirmation(result.bookingDetails, LIFF_ID); 
+            submitBookingButton.textContent = '訂房成功！';
+            submitBookingButton.style.backgroundColor = '#181c53';
+            bookingErrorEl.textContent = '';
+            availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出，確認訊息已發送至您的 LINE！ 3 秒後將關閉視窗。`;
+            setTimeout(closeBookingModal, 3000);
+        } catch (error) {
+            bookingErrorEl.textContent = `發生錯誤：${error.message}`;
+            submitBookingButton.disabled = false;
+            submitBookingButton.textContent = '確認訂房';
         }
-
-        // 訂房成功後，呼叫發送訊息的邏輯
-        await sendBookingConfirmation(result.bookingDetails); 
-
-        // 成功訊息的提示文字
-        submitBookingButton.textContent = '訂房成功！';
-        submitBookingButton.style.backgroundColor = '#00B900';
-        bookingErrorEl.textContent = '';
-        availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出！ 3 秒後將關閉視窗。`;
-
-        setTimeout(() => { closeBookingModal(); }, 3000);
-
-    } catch (error) {
-        // --- 【偵錯核心】如果上面有任何錯誤，執行這裡 ---
-        bookingErrorEl.textContent = `發生錯誤：${error.message}`;
-        submitBookingButton.disabled = false;
-        submitBookingButton.textContent = '確認訂房';
-
-        // 呼叫發送偵錯訊息的函式
-        await sendDebugMessage(error);
     }
-}
 
-    closeButton.addEventListener('click', closeBookingModal);
+    // --- 【修改】將事件監聽統一管理 ---
+    bookingCloseButton.addEventListener('click', closeBookingModal);
+
+    // --- 【修改】點擊叉叉時，觸發瀏覽器的返回事件 ---
+    detailsCloseButton.addEventListener('click', () => {
+        history.back();
+    });
+
     submitBookingButton.addEventListener('click', submitBooking);
+
+    // --- 【新增】監聽 popstate 事件 (使用者點擊上一頁時觸發) ---
+    window.addEventListener('popstate', (event) => {
+        // 檢查 URL hash 是否不再是 #details，或是 state 不存在
+        // 這表示我們應該關閉視窗
+        if (location.hash !== '#details') {
+            closeRoomDetailsModal();
+        }
+    });
 
     main();
 });
 
+
+// --- 剩下的 sendBookingConfirmation 函式維持不變 ---
 async function sendBookingConfirmation(details, liffId) {
     if (!liff.isInClient()) {
         console.log('不在 LINE 環境中，略過發送訊息。');
@@ -394,7 +319,6 @@ async function sendBookingConfirmation(details, liffId) {
 
     const nights = (new Date(details.checkOutDate) - new Date(details.checkInDate)) / (1000 * 60 * 60 * 24);
 
-    // --- Flex Message 的完整 JSON 結構 ---
     const flexMessage = {
         "type": "bubble",
         "header": {
@@ -440,7 +364,6 @@ async function sendBookingConfirmation(details, liffId) {
                             { "type": "text", "text": "退房", "color": "#aaaaaa", "size": "sm", "flex": 2 },
                             { "type": "text", "text": `${details.checkOutDate} (${nights}晚)`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
                         ]},
-                        // --- 【新增】總金額區塊 ---
                         { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
                             { "type": "text", "text": "總金額", "color": "#aaaaaa", "size": "sm", "flex": 2 },
                             { "type": "text", "text": `NT$ ${details.totalPrice.toLocaleString()}`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5, "weight": "bold" }
