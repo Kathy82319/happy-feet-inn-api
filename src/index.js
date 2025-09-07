@@ -16,6 +16,28 @@ export default {
         const url = new URL(request.url);
         const pathname = url.pathname;
         const method = request.method;
+
+        // --- 【新增】Webhook 路由器邏輯 ---
+        // 我們將 LINE Developer 後台的 Webhook URL 統一指向這裡
+        if (pathname === '/api/webhook-router' && method === 'POST') {
+            const signature = request.headers.get('X-Line-Signature');
+            
+            // 判斷：有 X-Line-Signature 的是來自 Messaging API 的使用者訊息
+            if (signature) {
+                console.log('[Router] Forwarding user message to Auto-Reply Bot...');
+                // 將請求原封不動地轉發給您的自動回覆機器人
+                // 這個 URL 需要您在 wrangler.toml 中設定
+                return fetch(env.AUTO_REPLY_BOT_URL, request);
+            }
+            // 判斷：如果不是使用者訊息，我們就當作它是 LINE Pay 的通知
+            else {
+                console.log('[Router] Processing internal payment webhook...');
+                // 直接在內部呼叫處理付款的函式
+                return await handlePaymentWebhook(request, env);
+            }
+        }
+        // --- 路由器邏輯結束 ---
+        
         const LINE_PAY_API_URL = "https://sandbox-api-pay.line.me";
 
         console.log(`[Request] Method: ${method}, Path: ${pathname}`);
@@ -34,7 +56,6 @@ export default {
                 else if (pathname === '/api/room-details' && method === 'GET') response = await handleGetRoomDetails(request, env);
                 // --- 【新增】處理付款的 API 端點 ---
                 else if (pathname === '/api/payment/create' && method === 'POST') response = await handleCreatePayment(request, env, LINE_PAY_API_URL);
-                else if (pathname === '/api/payment/webhook' && method === 'POST') response = await handlePaymentWebhook(request, env);
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
                 const newHeaders = new Headers(response.headers);

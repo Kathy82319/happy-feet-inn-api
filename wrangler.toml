@@ -10,6 +10,7 @@ id = "9e45b2744c0b4a6b9932572a60281986"
 [vars]
 # 請務必將這裡的 ID 換成你自己的 Google Sheet ID
 GOOGLE_SHEET_ID = "1MOFcdTXg7x1NK-yaYoHHoHwC6NWGbWF4K64wNUmdD1w"
+AUTO_REPLY_BOT_URL = "https://gpt4o.cath82319.workers.dev/" # <== 請換成您自己的機器人網址
 
 [triggers]
 # "*/5 * * * *" 代表每 5 分鐘執行一次

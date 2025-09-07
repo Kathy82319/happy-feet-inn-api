@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let lineProfile = {}, selectedRoom = {}, datepicker, finalTotalPrice = 0;
     let selectedDates = []; 
     
-    // --- 【修改】將 detailsModal 的宣告移到前面 ---
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
     const userNameSpan = document.getElementById('user-name');
@@ -111,13 +110,11 @@ document.addEventListener('DOMContentLoaded', () => {
         bookingModal.classList.remove('hidden');
     }
     
-    // --- 【修改】加入 history.pushState 來改變網址與歷史紀錄 ---
     async function openRoomDetailsModal(room) {
         const detailsContent = document.getElementById('details-content');
         detailsContent.innerHTML = '<p>正在載入房型詳細資訊...</p>';
         detailsModal.classList.remove('hidden');
         
-        // 新增一筆歷史紀錄，並在 URL 加上 #details
         history.pushState({ modal: 'details' }, `房型詳情: ${room.name}`, '#details');
 
         try {
@@ -145,7 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             document.getElementById('modal-book-now').addEventListener('click', () => {
-                // 這裡我們不直接關閉，而是觸發返回，讓 popstate 監聽器去關閉
                 history.back();
                 openBookingModal(room);
             });
@@ -159,16 +155,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 function showSlide(index) {
                     slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
                 }
-
-                nextBtn.addEventListener('click', () => {
-                    currentSlide = (currentSlide + 1) % images.length;
-                    showSlide(currentSlide);
-                });
-
-                prevBtn.addEventListener('click', () => {
-                    currentSlide = (currentSlide - 1 + images.length) % images.length;
-                    showSlide(currentSlide);
-                });
+                nextBtn.addEventListener('click', () => { currentSlide = (currentSlide + 1) % images.length; showSlide(currentSlide); });
+                prevBtn.addEventListener('click', () => { currentSlide = (currentSlide - 1 + images.length) % images.length; showSlide(currentSlide); });
             }
 
         } catch (error) {
@@ -177,26 +165,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 【新增】一個統一的關閉詳情視窗函式 ---
-    function closeRoomDetailsModal() {
-        detailsModal.classList.add('hidden');
-    }
-
+    function closeRoomDetailsModal() { detailsModal.classList.add('hidden'); }
     function closeBookingModal() {
         bookingModal.classList.add('hidden');
-        if (datepicker) {
-            datepicker.destroy();
-            datepicker = null;
-        }
+        if (datepicker) { datepicker.destroy(); datepicker = null; }
     }
 
     function initializeDatepicker() {
         if (datepicker) datepicker.destroy();
         const Datepicker = window.Datepicker;
-        if (!Datepicker) {
-            console.error("Datepicker library not loaded!");
-            return;
-        }
+        if (!Datepicker) { console.error("Datepicker library not loaded!"); return; }
         datepicker = new Datepicker(dateRangePickerEl, {
             language: 'zh-TW',
             format: 'yyyy-mm-dd',
@@ -213,8 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
         priceCalculationEl.textContent = '';
         submitBookingButton.disabled = true;
         if (!e.detail || !e.detail.date || e.detail.date.length < 2) {
-            availabilityResultEl.textContent = '請選擇退房日期';
-            return;
+            availabilityResultEl.textContent = '請選擇退房日期'; return;
         }
         selectedDates = e.detail.date.sort((a, b) => a - b);
         const [startDate, endDate] = selectedDates.map(formatDate);
@@ -246,40 +223,62 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- 【核心修改】重構訂房與付款流程 ---
     async function submitBooking() {
         if (selectedDates.length < 2 || !guestNameInput.value || !guestPhoneInput.value) {
             bookingErrorEl.textContent = '請選擇完整的日期並填寫所有必填欄位。';
             return;
         }
+
         submitBookingButton.disabled = true;
-        submitBookingButton.textContent = '正在為您處理...';
+        submitBookingButton.textContent = '正在建立訂單...';
+        bookingErrorEl.textContent = '';
+
         const [checkInDate, checkOutDate] = selectedDates.map(formatDate);
         const bookingData = {
             lineUserId: lineProfile.userId,
             lineDisplayName: lineProfile.displayName,
             roomId: selectedRoom.id,
-            checkInDate, checkOutDate,
+            checkInDate,
+            checkOutDate,
             guestName: guestNameInput.value,
             guestPhone: guestPhoneInput.value,
             totalPrice: finalTotalPrice,
         };
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/bookings`, {
+            // 步驟 1: 建立後端訂單 (狀態為 PENDING_PAYMENT)
+            const bookingResponse = await fetch(`${API_BASE_URL}/api/bookings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(bookingData),
             });
-            const result = await response.json();
-            if (!response.ok || !result.success) {
-                throw new Error(result.error || '訂房失敗，請稍後再試');
+            const bookingResult = await bookingResponse.json();
+            if (!bookingResponse.ok || !bookingResult.bookingId) {
+                throw new Error(bookingResult.error || '建立訂單失敗');
             }
-            await sendBookingConfirmation(result.bookingDetails, LIFF_ID); 
-            submitBookingButton.textContent = '訂房成功！';
-            submitBookingButton.style.backgroundColor = '#181c53';
-            bookingErrorEl.textContent = '';
-            availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出，確認訊息已發送至您的 LINE！ 3 秒後將關閉視窗。`;
-            setTimeout(closeBookingModal, 3000);
+
+            // 步驟 2: 建立成功後，立即為這筆訂單建立付款請求
+            submitBookingButton.textContent = '正在前往付款...';
+            const paymentResponse = await fetch(`${API_BASE_URL}/api/payment/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: bookingResult.bookingId }),
+            });
+            const paymentResult = await paymentResponse.json();
+            if (!paymentResponse.ok || !paymentResult.paymentUrl) {
+                throw new Error(paymentResult.error || '建立付款連結失敗');
+            }
+
+            // 步驟 3: 將使用者導向 LINE Pay 付款頁面
+            // 使用 liff.openWindow 在 LIFF 環境中體驗更好
+            liff.openWindow({
+                url: paymentResult.paymentUrl,
+                external: true
+            });
+            
+            closeBookingModal();
+
         } catch (error) {
             bookingErrorEl.textContent = `發生錯誤：${error.message}`;
             submitBookingButton.disabled = false;
@@ -287,20 +286,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 【修改】將事件監聽統一管理 ---
     bookingCloseButton.addEventListener('click', closeBookingModal);
-
-    // --- 【修改】點擊叉叉時，觸發瀏覽器的返回事件 ---
-    detailsCloseButton.addEventListener('click', () => {
-        history.back();
-    });
-
+    detailsCloseButton.addEventListener('click', () => { history.back(); });
     submitBookingButton.addEventListener('click', submitBooking);
 
-    // --- 【新增】監聽 popstate 事件 (使用者點擊上一頁時觸發) ---
     window.addEventListener('popstate', (event) => {
-        // 檢查 URL hash 是否不再是 #details，或是 state 不存在
-        // 這表示我們應該關閉視窗
         if (location.hash !== '#details') {
             closeRoomDetailsModal();
         }
@@ -308,94 +298,3 @@ document.addEventListener('DOMContentLoaded', () => {
 
     main();
 });
-
-
-// --- 剩下的 sendBookingConfirmation 函式維持不變 ---
-async function sendBookingConfirmation(details, liffId) {
-    if (!liff.isInClient()) {
-        console.log('不在 LINE 環境中，略過發送訊息。');
-        return;
-    }
-
-    const nights = (new Date(details.checkOutDate) - new Date(details.checkInDate)) / (1000 * 60 * 60 * 24);
-
-    const flexMessage = {
-        "type": "bubble",
-        "header": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                { "type": "text", "text": "訂單成立通知", "weight": "bold", "color": "#1DB446", "size": "sm" },
-                { "type": "text", "text": "快樂腳旅棧", "weight": "bold", "size": "xxl", "margin": "md" },
-                { "type": "text", "text": `訂單編號： ${details.bookingId}`, "size": "xs", "color": "#aaaaaa", "wrap": true }
-            ]
-        },
-        "hero": {
-            "type": "image",
-            "url": details.imageUrl,
-            "size": "full",
-            "aspectRatio": "20:13",
-            "aspectMode": "cover"
-        },
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "box",
-                    "layout": "vertical",
-                    "margin": "lg",
-                    "spacing": "sm",
-                    "contents": [
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
-                            { "type": "text", "text": "房型", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": details.roomName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]},
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
-                            { "type": "text", "text": "訂房大名", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": details.guestName, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]},
-                        { "type": "separator", "margin": "lg" },
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "margin": "lg", "contents": [
-                            { "type": "text", "text": "入住", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": details.checkInDate, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]},
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
-                            { "type": "text", "text": "退房", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": `${details.checkOutDate} (${nights}晚)`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5 }
-                        ]},
-                        { "type": "box", "layout": "baseline", "spacing": "sm", "contents": [
-                            { "type": "text", "text": "總金額", "color": "#aaaaaa", "size": "sm", "flex": 2 },
-                            { "type": "text", "text": `NT$ ${details.totalPrice.toLocaleString()}`, "wrap": true, "color": "#666666", "size": "sm", "flex": 5, "weight": "bold" }
-                        ]}
-                    ]
-                }
-            ]
-        },
-        "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "spacing": "sm",
-            "contents": [
-                { "type": "button", "style": "link", "height": "sm", "action": {
-                    "type": "uri",
-                    "label": "查看我的所有訂單",
-                    "uri": "https://liff.line.me/2008032417-DPqYdL7p/my-bookings.html"
-                }},
-                { "type": "box", "layout": "vertical", "contents": [], "margin": "sm" }
-            ],
-            "flex": 0
-        }
-    };
-
-    try {
-        await liff.sendMessages([{
-            type: 'flex',
-            altText: `您的訂單 ${details.bookingId} 已成立！`,
-            contents: flexMessage
-        }]);
-        console.log('發送確認訊息成功!');
-    } catch (error) {
-        console.error('發送確認訊息失敗，但訂單仍成功建立:', error);
-    }
-}
