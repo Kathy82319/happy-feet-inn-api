@@ -3,9 +3,9 @@ main = "src/index.js"
 compatibility_date = "2025-08-31" # 你可以使用今天的日期
 
 # 我們未來會在這裡加上 KV 的設定
-# [[kv_namespaces]]
-# binding = "ROOMS_KV"
-# id = "9e45b2744c0b4a6b9932572a60281986"
+[[kv_namespaces]]
+binding = "ROOMS_KV"
+id = "9e45b2744c0b4a6b9932572a60281986"
 
 [vars]
 # 請務必將這裡的 ID 換成你自己的 Google Sheet ID
