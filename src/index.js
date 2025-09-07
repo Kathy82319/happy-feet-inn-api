@@ -689,18 +689,7 @@ async function getGoogleAuthToken(serviceAccountKeyJson) {
     return tokens.access_token;
 }
 
-// 【新增】HMAC-SHA256 加密函式
-async function hmacSha256(message, secret) {
-    const key = await crypto.subtle.importKey(
-        'raw',
-        (new TextEncoder()).encode(secret),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign']
-    );
-    const signature = await crypto.subtle.sign('HMAC', key, (new TextEncoder()).encode(message));
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
-}
+
 
 // --- Flex Message 完整內容 ---
 const paymentSuccessFlexMessage = (bookingDetails, room) => {
