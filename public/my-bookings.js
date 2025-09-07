@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const LIFF_ID = "2008032417-DPqYdL7p"; // 請確認與主頁的 LIFF ID 相同
+    const LIFF_ID = "2008032417-DPqYdL7p";
     const API_BASE_URL = "https://happy-feet-inn-api.pages.dev";
 
     let lineProfile = {};
-    const roomDataCache = {}; // 用來快取房型名稱與圖片
+    const roomDataCache = {}; 
 
     const loadingSpinner = document.getElementById('loading-spinner');
     const userProfileDiv = document.getElementById('user-profile');
@@ -13,19 +13,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const bookingListDiv = document.getElementById('booking-list');
     const noBookingMessage = document.getElementById('no-booking-message');
 
-    // --- 【新增】輪詢功能的變數 ---
     let pollingInterval;
     let pollingCount = 0;
-    const MAX_POLLING_COUNT = 5; // 最多輪詢 5 次 (約 10 秒)
+    const MAX_POLLING_COUNT = 5;
 
     function main() {
         liff.init({ liffId: LIFF_ID })
             .then(() => {
-                if (!liff.isLoggedIn()) {
-                    liff.login();
-                } else {
-                    getUserProfile();
-                }
+                if (!liff.isLoggedIn()) liff.login();
+                else getUserProfile();
             })
             .catch(err => {
                 console.error("LIFF Initialization failed", err);
@@ -39,7 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
             userNameSpan.textContent = profile.displayName;
             userPictureImg.src = profile.pictureUrl;
             userProfileDiv.classList.remove('hidden');
-
             fetchRoomsAndThenBookings();
         }).catch(err => console.error("Get profile failed", err));
     }
@@ -47,18 +42,20 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchRoomsAndThenBookings() {
         try {
             const response = await fetch(`${API_BASE_URL}/api/rooms`);
-            if (!response.ok) {
-                const errorText = await response.text().catch(() => '無法讀取錯誤內容');
-                throw new Error(`HTTP 請求失敗！ 狀態碼: ${response.status}, 訊息: ${errorText}`);
-            }
+            if (!response.ok) throw new Error('載入房型資料失敗');
             const rooms = await response.json();
             rooms.forEach(room => {
                 roomDataCache[room.id] = { name: room.name, imageUrl: room.imageUrl };
             });
-            fetchMyBookings();
         } catch (error) {
-            console.error('載入房型資料失敗 (fetchRoomsAndThenBookings):', error);
-            fetchMyBookings();
+            console.error('載入房型資料失敗:', error);
+        } finally {
+            await fetchMyBookings();
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('fromPayment')) {
+                const bookingIdToCheck = urlParams.get('bookingId');
+                startPolling(bookingIdToCheck);
+            }
         }
     }
 
@@ -79,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 bookings.sort((a, b) => {
                     if (a.status === 'CANCELLED' && b.status !== 'CANCELLED') return 1;
                     if (b.status === 'CANCELLED' && a.status !== 'CANCELLED') return -1;
-                    return new Date(b.checkInDate) - new Date(a.checkInDate);
+                    return b.bookingId.localeCompare(a.bookingId);
                 });
                 bookings.forEach(booking => {
                     const bookingCard = createBookingCard(booking);
@@ -94,32 +91,23 @@ document.addEventListener('DOMContentLoaded', () => {
             mainContent.classList.remove('hidden');
         }
     }
-
- // --- 【新增】輪詢的啟動與停止邏輯 ---
+    
     function startPolling(bookingId) {
-        // 先清除可能存在的舊計時器
         stopPolling(); 
-        
         console.log(`Starting to poll for booking ID: ${bookingId}`);
         pollingInterval = setInterval(async () => {
             pollingCount++;
             console.log(`Polling attempt #${pollingCount}`);
-            
-            // 重新拉取一次訂單資料
             await fetchMyBookings();
-            
-            // 檢查目標訂單的狀態是否已更新
             const targetCard = document.querySelector(`.booking-card[data-booking-id="${bookingId}"]`);
             const statusBadge = targetCard ? targetCard.querySelector('.status-badge') : null;
-
-            // 如果狀態已變成 '已確認' 或輪詢次數過多，就停止
             if ((statusBadge && statusBadge.textContent === '已確認') || pollingCount >= MAX_POLLING_COUNT) {
                 stopPolling();
             }
-        }, 1000); // 每 2 秒檢查一次
+        }, 2000);
     }
 
-      function stopPolling() {
+    function stopPolling() {
         if (pollingInterval) {
             console.log('Stopping polling.');
             clearInterval(pollingInterval);
@@ -139,52 +127,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showBookingDetailsModal(booking) {
-    const modal = document.getElementById('booking-details-modal');
-    const modalContent = document.getElementById('details-modal-content');
-    const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId };
+        const modal = document.getElementById('booking-details-modal');
+        const modalContent = document.getElementById('details-modal-content');
+        const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId };
+        modalContent.innerHTML = `<h3>訂單明細：${roomInfo.name}</h3><p><strong>訂單編號:</strong> ${booking.bookingId}</p><p><strong>入住日期:</strong> ${booking.checkInDate}</p><p><strong>訂房大名:</strong> ${booking.guestName}</p><hr><h4>入住須知</h4><ul><li>入住時間 (Check-in) 為下午 3:00 後。</li><li>退房時間 (Check-out) 為上午 11:00 前。</li><li>請持訂房人有效證件辦理入住，未滿18歲需家長同意書。</li><li>為響應環保，我們不主動提供一次性盥洗用品，敬請自備。</li><li>全館禁止吸菸，禁止攜帶寵物，感謝您的合作。</li></ul><div class="contact-info"><h4>聯絡我們</h4><p><strong>地址：</strong><a href="https://maps.google.com/?q=台中市中區中華路一段185號十樓" target="_blank">台中市中區中華路一段185號十樓</a></p><p><strong>電話：</strong><a href="tel:+886-4-22232033">04-2223-2033 (點擊撥打)</a></p></div><button id="close-details-modal" class="cta-button">關閉</button>`;
+        modal.classList.remove('hidden');
+        document.getElementById('close-details-modal').addEventListener('click', () => modal.classList.add('hidden'));
+    }
 
-    // --- 【修改】在這裡加入飯店聯絡資訊的 HTML ---
-    modalContent.innerHTML = `
-        <h3>訂單明細：${roomInfo.name}</h3>
-        <p><strong>訂單編號:</strong> ${booking.bookingId}</p>
-        <p><strong>入住日期:</strong> ${booking.checkInDate}</p>
-        <p><strong>訂房大名:</strong> ${booking.guestName}</p>
-        <hr>
-        <h4>入住須知</h4>
-        <ul>
-            <li>入住時間 (Check-in) 為下午 3:00 後。</li>
-            <li>退房時間 (Check-out) 為上午 11:00 前。</li>
-            <li>請持訂房人有效證件辦理入住，未滿18歲需家長同意書。</li>
-            <li>為響應環保，我們不主動提供一次性盥洗用品，敬請自備。</li>
-            <li>全館禁止吸菸，禁止攜帶寵物，感謝您的合作。</li>
-        </ul>
-        
-        <div class="contact-info">
-            <h4>聯絡我們</h4>
-            <p>
-                <strong>地址：</strong>
-                <a href="https://maps.app.goo.gl/yDbLFXpzLUWsJU9d7" target="_blank">
-                     台中市中區中華路一段185號十樓
-                </a>
-            </p>
-            <p>
-                <strong>電話：</strong>
-                <a href="tel:+886-4-22232033">
-                    04-2223-2033 (點擊撥打)
-                </a>
-            </p>
-        </div>
-        
-        <button id="close-details-modal" class="cta-button">關閉</button>
-    `;
-
-    modal.classList.remove('hidden');
-
-    document.getElementById('close-details-modal').addEventListener('click', () => {
-        modal.classList.add('hidden');
-    });
-}
-
+    // --- 【修改】createBookingCard 函式，加入付款按鈕 ---
     function createBookingCard(booking) {
         const card = document.createElement('div');
         const isPendingPayment = booking.status === 'PENDING_PAYMENT';
@@ -193,65 +144,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const roomInfo = roomDataCache[booking.roomId] || { name: booking.roomId, imageUrl: 'https://placehold.co/600x400?text=No+Image' };
         const nights = (new Date(booking.checkOutDate) - new Date(booking.checkInDate)) / (1000 * 60 * 60 * 24);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const checkInDate = new Date(booking.checkInDate);
-        const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-        const isCancellable = diffDays >= 2 && booking.status !== 'CANCELLED';
+        const diffDays = (new Date(booking.checkInDate).setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / (1000 * 60 * 60 * 24);
+        const isCancellable = diffDays >= 2 && booking.status !== 'CANCELLED' && booking.status !== 'CONFIRMED';
         const statusText = getStatusText(booking.status);
 
-        card.innerHTML = `
-            <div class="booking-card-header">
-                <h3>${roomInfo.name}</h3>
-                <span class="status-badge status-${(booking.status || '').toLowerCase()}">${statusText}</span>
-            </div>
-            <div class="booking-card-body">
-                <img src="${roomInfo.imageUrl}" alt="${roomInfo.name}">
-                <div class="booking-details">
-                    <p><strong>訂單編號:</strong> ${booking.bookingId}</p>
-                    <p><strong>入住日期:</strong> ${booking.checkInDate}</p>
-                    <p><strong>退房日期:</strong> ${booking.checkOutDate} (${nights}晚)</p>
-                    <p><strong>訂房大名:</strong> ${booking.guestName}</p>
-                    <p><strong>訂單總額:</strong> NT$ ${booking.totalPrice.toLocaleString()}</p>
-                </div>
-            </div>
-            <div class="booking-card-footer">
-                ${isPendingPayment ? '<p class="footer-note">點擊卡片查看付款資訊與入住須知</p>' : ''}
-                ${isCancellable ? '<button class="cta-button cancel-button">取消此訂單</button>' : ''}
-            </div>
-        `;
+        let footerHTML = '';
+        if (isPendingPayment) {
+            footerHTML += `<button class="cta-button pay-now-button">進行付款</button>`;
+        }
+        if (isCancellable) {
+            footerHTML += `<button class="cta-button cancel-button">取消此訂單</button>`;
+        }
+        
+        card.innerHTML = `<div class="booking-card-header"><h3>${roomInfo.name}</h3><span class="status-badge status-${(booking.status || '').toLowerCase()}">${statusText}</span></div><div class="booking-card-body"><img src="${roomInfo.imageUrl}" alt="${roomInfo.name}"><div class="booking-details"><p><strong>訂單編號:</strong> ${booking.bookingId}</p><p><strong>入住日期:</strong> ${booking.checkInDate}</p><p><strong>退房日期:</strong> ${booking.checkOutDate} (${nights}晚)</p><p><strong>訂單總額:</strong> NT$ ${booking.totalPrice.toLocaleString()}</p></div></div><div class="booking-card-footer">${footerHTML}</div>`;
+        
+        if (isPendingPayment) {
+            // 讓卡片上半部可以點擊顯示詳情
+            card.querySelector('.booking-card-body').addEventListener('click', () => showBookingDetailsModal(booking));
+            // 為付款按鈕綁定事件
+            card.querySelector('.pay-now-button').addEventListener('click', (e) => {
+                e.stopPropagation();
+                handleRepayment(booking.bookingId);
+            });
+        }
 
         if (isCancellable) {
             card.querySelector('.cancel-button').addEventListener('click', (e) => {
                 e.stopPropagation();
-                handleCancelBooking(booking.bookingId, checkInDate)
+                handleCancelBooking(booking.bookingId, new Date(booking.checkInDate));
             });
         }
-        if (isPendingPayment) {
-            card.addEventListener('click', () => showBookingDetailsModal(booking));
-        }
-
+        
         return card;
+    }
+
+    // --- 【新增】處理重新付款的函式 ---
+    async function handleRepayment(bookingId) {
+        const payButton = document.querySelector(`.booking-card[data-booking-id="${bookingId}"] .pay-now-button`);
+        if(payButton) payButton.textContent = '處理中...';
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/payment/create`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bookingId: bookingId }),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.paymentUrl) {
+                throw new Error(result.error || '建立付款連結失敗');
+            }
+            window.location.href = result.paymentUrl;
+        } catch (error) {
+            alert(`發生錯誤：${error.message}`);
+            if(payButton) payButton.textContent = '進行付款';
+        }
     }
 
     async function handleCancelBooking(bookingId, checkInDate) {
         const confirmed = confirm("您確定要取消這筆訂單嗎？此操作無法復原。");
         if (!confirmed) return;
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const diffDays = (checkInDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
-        if (diffDays < 2) {
-            alert("訂房當日(或前一日)不可取消，若有問題請洽客服人員。");
-            return;
-        }
         try {
             const response = await fetch(`${API_BASE_URL}/api/bookings/cancel`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    bookingId: bookingId,
-                    lineUserId: lineProfile.userId
-                }),
+                body: JSON.stringify({ bookingId: bookingId, lineUserId: lineProfile.userId }),
             });
             const result = await response.json();
             if (!response.ok || result.error) throw new Error(result.error || '取消訂單失敗');
