@@ -92,19 +92,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- 【修改】輪詢的啟動與停止邏輯，確保一定會停止 ---
     function startPolling(bookingId) {
-        stopPolling(); 
+        stopPolling(); // 確保開始前是乾淨的
+        
         console.log(`Starting to poll for booking ID: ${bookingId}`);
         pollingInterval = setInterval(async () => {
             pollingCount++;
             console.log(`Polling attempt #${pollingCount}`);
+            
+            // 如果輪詢次數過多，就強制停止，不再拉取資料
+            if (pollingCount >= MAX_POLLING_COUNT) {
+                stopPolling();
+                return; // 提前結束，避免多餘的 API 呼叫
+            }
+            
             await fetchMyBookings();
+            
             const targetCard = document.querySelector(`.booking-card[data-booking-id="${bookingId}"]`);
             const statusBadge = targetCard ? targetCard.querySelector('.status-badge') : null;
-            if ((statusBadge && statusBadge.textContent === '已確認') || pollingCount >= MAX_POLLING_COUNT) {
+
+            // 如果狀態已變成 '已確認'，也停止
+            if (statusBadge && statusBadge.textContent === '已確認') {
                 stopPolling();
             }
-        }, 2000);
+        }, 2000); // 每 2 秒檢查一次
     }
 
     function stopPolling() {
@@ -112,7 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Stopping polling.');
             clearInterval(pollingInterval);
             pollingInterval = null;
-            pollingCount = 0;
+            pollingCount = 0; // 重置計數器
         }
     }
 

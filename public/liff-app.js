@@ -247,35 +247,36 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         try {
-            // 步驟 1: 建立後端訂單 (狀態為 PENDING_PAYMENT)
+            // 步驟 1: 建立後端訂單
             const bookingResponse = await fetch(`${API_BASE_URL}/api/bookings`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(bookingData),
             });
             const bookingResult = await bookingResponse.json();
-            if (!bookingResponse.ok || !bookingResult.bookingId) {
+            // 【修改】現在 bookingResult 會包含 bookingId 和 newRowNumber
+            if (!bookingResponse.ok || !bookingResult.bookingId || !bookingResult.newRowNumber) {
                 throw new Error(bookingResult.error || '建立訂單失敗');
             }
 
-            // 步驟 2: 建立成功後，立即為這筆訂單建立付款請求
+            // 步驟 2: 建立付款請求，並把 newRowNumber 一起傳過去
             submitBookingButton.textContent = '正在前往付款...';
             const paymentResponse = await fetch(`${API_BASE_URL}/api/payment/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingId: bookingResult.bookingId }),
+                body: JSON.stringify({ 
+                    bookingId: bookingResult.bookingId,
+                    rowNumber: bookingResult.newRowNumber // 【新增】傳遞 rowNumber
+                }),
             });
             const paymentResult = await paymentResponse.json();
             if (!paymentResponse.ok || !paymentResult.paymentUrl) {
                 throw new Error(paymentResult.error || '建立付款連結失敗');
             }
 
-            // 步驟 3: 將使用者導向 LINE Pay 付款頁面
-            // 使用 liff.openWindow 在 LIFF 環境中體驗更好
+            // 步驟 3: 跳轉
             window.location.href = paymentResult.paymentUrl;
             
-            closeBookingModal();
-
         } catch (error) {
             bookingErrorEl.textContent = `發生錯誤：${error.message}`;
             submitBookingButton.disabled = false;

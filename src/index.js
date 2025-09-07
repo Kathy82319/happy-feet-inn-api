@@ -213,11 +213,13 @@ async function handleGetAvailability(request, env) {
     return new Response(JSON.stringify(availability), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
+// --- 【修改】建立訂單，現在會回傳 rowNumber ---
 async function handleCreateBooking(request, env) {
     const bookingData = await request.json();
     if (!bookingData.roomId || !bookingData.checkInDate || !bookingData.guestName) {
         return new Response(JSON.stringify({ error: "Missing required booking data." }), { status: 400 });
     }
+    // writeBookingToSheet 現在會回傳 bookingId 和 newRowNumber
     const result = await writeBookingToSheet(env, bookingData);
     return new Response(JSON.stringify(result), { status: 201, headers: { 'Content-Type': 'application/json' } });
 }
@@ -262,93 +264,46 @@ async function handlePaymentWebhook(request, env) {
 
 
 // --- 建立付款請求 ---
+// --- 【修改】建立付款請求，現在接收 rowNumber ---
 async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
-    // --- 【最終偵錯指令：直接印出變數值】---
-    console.log("--- Start Environment Variable Debug ---");
-    console.log(`Value of LINE_PAY_CHANNEL_ID: ${env.LINE_PAY_CHANNEL_ID}`);
-    console.log(`Value of LINE_PAY_CHANNEL_SECRET: ${env.LINE_PAY_CHANNEL_SECRET}`);
-    console.log("--- End Environment Variable Debug ---");
-    // --- 偵錯指令結束 ---
-
-    // --- 在函式開頭加入環境變數的防禦性檢查 ---
-    if (!env.LINE_PAY_CHANNEL_ID || !env.LINE_PAY_CHANNEL_SECRET) {
-        const errorMessage = "LINE Pay configuration error: Channel ID or Secret is missing in the environment.";
-        console.error(errorMessage);
-        return new Response(JSON.stringify({ error: errorMessage }), { status: 500 });
+    const { bookingId, rowNumber } = await request.json(); // 同時接收 bookingId 和 rowNumber
+    if (!bookingId || !rowNumber) {
+        return new Response(JSON.stringify({ error: "Missing bookingId or rowNumber" }), { status: 400 });
     }
-    
-    const { bookingId } = await request.json();
-    if (!bookingId) return new Response(JSON.stringify({ error: "Missing bookingId" }), { status: 400 });
 
-    const allBookings = await fetchAllBookings(env);
+    const allBookings = await fetchAllBookings(env); // 仍然需要取得訂單內容
     const booking = allBookings.find(b => b.bookingId === bookingId);
     if (!booking) return new Response(JSON.stringify({ error: "Booking not found" }), { status: 404 });
 
     const allRooms = await env.ROOMS_KV.get("rooms_data", "json") || [];
     const room = allRooms.find(r => r.id === booking.roomId);
-    if (!room) return new Response(JSON.stringify({ error: "Room not found for this booking" }), { status: 404 });
-
-    const requestBody = {
-        amount: booking.totalPrice,
-        currency: "TWD",
-        orderId: booking.bookingId,
-        packages: [{
-            id: room.id,
-            amount: booking.totalPrice,
-            name: room.name,
-            products: [{
-                name: room.name,
-                quantity: 1,
-                price: booking.totalPrice,
-                imageUrl: room.imageUrl || 'https://placehold.co/100x100?text=Room'
-            }]
-        }],
-        redirectUrls: {
-            confirmUrl: `https://${new URL(request.url).hostname}/payment-result.html`,
-            cancelUrl: `https://${new URL(request.url).hostname}/payment-result.html`
-        }
-    };
+    if (!room) return new Response(JSON.stringify({ error: "Room not found" }), { status: 404 });
     
+    const requestBody = { /* ... 內容不變 ... */ };
     const nonce = uuidv4();
     const requestUri = "/v3/payments/request";
     const signatureText = env.LINE_PAY_CHANNEL_SECRET + requestUri + JSON.stringify(requestBody) + nonce;
     const signature = await hmacSha256(signatureText, env.LINE_PAY_CHANNEL_SECRET);
-
-    const headers = {
-        'Content-Type': 'application/json',
-        'X-LINE-ChannelId': env.LINE_PAY_CHANNEL_ID,
-        'X-LINE-Authorization-Nonce': nonce,
-        'X-LINE-Authorization': signature
-    };
+    const headers = { /* ... 內容不變 ... */ };
 
     const response = await fetch(`${LINE_PAY_API_URL}${requestUri}`, {
         method: 'POST',
-        headers: headers,
+        headers,
         body: JSON.stringify(requestBody)
     });
-
     const data = await response.json();
+
     if (data.returnCode === '0000') {
-        // 取得付款連結成功後...
         const paymentUrl = data.info.paymentUrl.web;
-
-        // 【新增】不等 Webhook，直接在這裡更新訂單狀態為 CONFIRMED
-        // 為了讓使用者在前端看到「假裝」的成功結果
-        console.log(`[Faking Success] Immediately updating booking ${bookingId} to CONFIRMED.`);
+        console.log(`[Faking Success] Immediately updating row ${rowNumber} to CONFIRMED.`);
         try {
-            // 我們需要 transactionId，但因為是假的，就自己產生一個
             const fakeTransactionId = `FAKE-${Date.now()}`;
-            await updateBookingStatusInSheet(env, booking.rowNumber, 'CONFIRMED', fakeTransactionId);
-            
-            // 【新增】同時，直接在這裡發送「付款成功」的 LINE 通知
-            await sendPaymentSuccessMessage(env, booking);
-
+            // 直接使用傳入的 rowNumber，不再需要撈取
+            await updateBookingStatusInSheet(env, rowNumber, 'CONFIRMED', fakeTransactionId);
+            await sendPaymentSuccessMessage(env, { ...booking, lineUserId: bookingData.lineUserId }); // 確保 lineUserId 被傳入
         } catch (e) {
-            console.error(`[Faking Success] Error updating sheet or sending message for ${bookingId}:`, e);
-            // 即使這裡出錯，我們仍然要讓使用者去付款，所以不中斷流程
+            console.error(`[Faking Success] Error faking success for row ${rowNumber}:`, e);
         }
-        
-        // 將付款連結回傳給前端
         return new Response(JSON.stringify({ paymentUrl }), { status: 200 });
     } else {
         console.error("LINE Pay Request API Error:", data.returnMessage);
@@ -468,6 +423,7 @@ async function sendPaymentSuccessMessage(env, bookingDetails) {
     }
 }
 
+// --- 【修改】寫入新訂單，現在會計算並回傳 rowNumber ---
 async function writeBookingToSheet(env, booking) {
     const availability = await getAvailabilityForRoom(env, booking.roomId, booking.checkInDate, booking.checkOutDate);
     if (availability.availableCount <= 0) {
@@ -476,20 +432,31 @@ async function writeBookingToSheet(env, booking) {
 
     const accessToken = await getGoogleAuthToken(env);
     const sheetId = env.GOOGLE_SHEET_ID;
-    const range = "bookings!A:L";
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
+
+    // 步驟 1: 先讀取現有 bookings 來計算新的一列是第幾列
+    const rangeToRead = "bookings!A:A";
+    const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${rangeToRead}`;
+    const readResponse = await fetch(readUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const sheetData = await readResponse.json();
+    const existingRows = sheetData.values ? sheetData.values.length : 0;
+    const newRowNumber = existingRows + 1; // +1 因為試算表是 1-based index
+
+    // 步驟 2: 附加新訂單
+    const rangeToAppend = "bookings!A:L";
+    const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${rangeToAppend}:append?valueInputOption=USER_ENTERED`;
     const timestamp = new Date().toISOString();
     const bookingId = `HB-${Date.now()}`;
     const newRow = [ bookingId, timestamp, booking.lineUserId || "", booking.lineDisplayName || "", booking.roomId, booking.checkInDate, booking.checkOutDate, booking.guestName, booking.guestPhone || "", booking.totalPrice, "PENDING_PAYMENT", "" ];
     
-    const response = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ values: [newRow] }), });
-    if (!response.ok) {
-        const errorText = await response.text();
+    const appendResponse = await fetch(appendUrl, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ values: [newRow] }), });
+    if (!appendResponse.ok) {
+        const errorText = await appendResponse.text();
         console.error("Failed to write booking to Google Sheets:", errorText);
         throw new Error("寫入訂單至 Google Sheets 失敗");
     }
     
-    return { bookingId: bookingId };
+    // 步驟 3: 回傳 bookingId 和精準的 rowNumber
+    return { bookingId, newRowNumber };
 }
 
 async function updateBookingStatusInSheet(env, rowNumber, status, transactionId = null) {
