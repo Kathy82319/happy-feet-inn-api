@@ -25,10 +25,3 @@ crons = ["*/5 * * * *"]
 
 # Final DNS refresh trigger
 
-# 【重要】以下是讓 Cloudflare Functions 讀取 Secret 變數的綁定
-# 我們不需要在這裡填入值，只需要定義綁定名稱即可
-[secrets]
-GCP_SERVICE_ACCOUNT_KEY
-LINE_PAY_CHANNEL_ID
-LINE_PAY_CHANNEL_SECRET
-LINE_MESSAGING_CHANNEL_TOKEN
