@@ -13,14 +13,24 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
+// --- 【最終修正】修正 HMAC-SHA256 加密函式中的 Base64 編碼問題 ---
 async function hmacSha256(message, secret) {
     const key = await crypto.subtle.importKey(
-        'raw', (new TextEncoder()).encode(secret),
+        'raw',
+        (new TextEncoder()).encode(secret),
         { name: 'HMAC', hash: 'SHA-256' },
-        false, ['sign']
+        false,
+        ['sign']
     );
-    const signature = await crypto.subtle.sign('HMAC', key, (new TextEncoder()).encode(message));
-    return btoa(String.fromCharCode(...new Uint8Array(signature)));
+    const signatureBuffer = await crypto.subtle.sign('HMAC', key, (new TextEncoder()).encode(message));
+    
+    // 將 ArrayBuffer 轉換為 Base64 字串的正確方法
+    const signatureBytes = new Uint8Array(signatureBuffer);
+    let binaryString = '';
+    signatureBytes.forEach(byte => {
+        binaryString += String.fromCharCode(byte);
+    });
+    return btoa(binaryString);
 }
 
 function handleCorsPreflight() {
