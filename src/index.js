@@ -583,7 +583,7 @@ async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
     }
     return totalPrice;
 }
-
+ 
 // --- Google 驗證 ---
 async function getGoogleAuthToken(env) {
     if (!env.GCP_SERVICE_ACCOUNT_KEY) throw new Error("GCP_SERVICE_ACCOUNT_KEY is not available.");
