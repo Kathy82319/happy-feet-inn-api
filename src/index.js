@@ -1,7 +1,7 @@
 import { SignJWT } from 'jose';
 import { v4 as uuidv4 } from 'uuid';
 
-// --- 輔助函式 ---
+// 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
 function formatDate(date) {
     if (!(date instanceof Date) || isNaN(date)) return null;
     const year = date.getFullYear();
@@ -23,7 +23,6 @@ async function hmacSha256(message, secret) {
 // --- 主路由器 ---
 export default {
     async fetch(request, env, ctx) {
-        // 【修正】移除多餘的 'new'
         const url = new URL(request.url);
         const pathname = url.pathname;
         const method = request.method;
@@ -51,7 +50,6 @@ export default {
             if (method === 'OPTIONS') return handleCorsPreflight();
             try {
                 let response;
-                // --- 為了讓您方便複製，此處提供完整的路由列表 ---
                 if (pathname === '/api/rooms' && method === 'GET') response = await handleGetRooms(request, env);
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
                 else if (pathname === '/api/bookings' && method === 'POST') response = await handleCreateBooking(request, env);
@@ -75,6 +73,15 @@ export default {
         }
         return env.ASSETS.fetch(request);
     },
+    async scheduled(event, env, ctx) {
+        console.log("[Cron] Scheduled sync triggered...");
+        try {
+            await syncAllSheetsToKV(env);
+        } catch (error) {
+            console.error("[Cron] Scheduled sync failed:", error);
+        }
+    },
+};
 
 
 // --- 金流 Webhook 處理函式 ---
