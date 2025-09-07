@@ -1,3 +1,9 @@
+
+# 讓 Pages 能正確識別並綁定資源
+# 即使我們沒有用到 WASM 或 D1，保留空設定有助於穩定性
+[wasm_modules]
+[d1_databases]
+
 name = "happy-feet-inn-api"
 main = "src/index.js"
 compatibility_date = "2025-08-31" # 你可以使用今天的日期
@@ -5,6 +11,7 @@ compatibility_date = "2025-08-31" # 你可以使用今天的日期
 # 我們未來會在這裡加上 KV 的設定
 [[kv_namespaces]]
 binding = "ROOMS_KV"
+LIFF_ID = "2008032417-DPqYdL7p"
 id = "9e45b2744c0b4a6b9932572a60281986"
 
 [vars]
@@ -17,3 +24,11 @@ AUTO_REPLY_BOT_URL = "https://gpt4o.cath82319.workers.dev/" # <== 請換成您�
 crons = ["*/5 * * * *"]
 
 # Final DNS refresh trigger
+
+# 【重要】以下是讓 Cloudflare Functions 讀取 Secret 變數的綁定
+# 我們不需要在這裡填入值，只需要定義綁定名稱即可
+[secrets]
+GCP_SERVICE_ACCOUNT_KEY
+LINE_PAY_CHANNEL_ID
+LINE_PAY_CHANNEL_SECRET
+LINE_MESSAGING_CHANNEL_TOKEN
