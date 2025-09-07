@@ -224,6 +224,10 @@ async function handleCreateBooking(request, env) {
 
 // --- 金流 Webhook 處理 ---
 async function handlePaymentWebhook(request, env) {
+    console.log('[Webhook] Received a webhook, but processing is disabled in test mode.');
+    // 直接回傳成功，不做任何事
+    
+    /* 實際可用的金流處理，但因為測試階段所以先用註解跳過
     const bodyText = await request.text();
     console.log('[Webhook] Received Raw Body:', bodyText);
 
@@ -252,10 +256,11 @@ async function handlePaymentWebhook(request, env) {
     } catch(e) {
         console.error('[Webhook] Error parsing webhook body:', e.message);
     }
-    return new Response(JSON.stringify({ success: true }), { status: 200 });
+    */    
+    return new Response(JSON.stringify({ success: true, message: "Webhook processing is disabled." }), { status: 200 });
 }
 
-// --- 建立付款請求 ---
+
 // --- 建立付款請求 ---
 async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
     // --- 【最終偵錯指令：直接印出變數值】---
@@ -324,7 +329,26 @@ async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
 
     const data = await response.json();
     if (data.returnCode === '0000') {
+        // 取得付款連結成功後...
         const paymentUrl = data.info.paymentUrl.web;
+
+        // 【新增】不等 Webhook，直接在這裡更新訂單狀態為 CONFIRMED
+        // 為了讓使用者在前端看到「假裝」的成功結果
+        console.log(`[Faking Success] Immediately updating booking ${bookingId} to CONFIRMED.`);
+        try {
+            // 我們需要 transactionId，但因為是假的，就自己產生一個
+            const fakeTransactionId = `FAKE-${Date.now()}`;
+            await updateBookingStatusInSheet(env, booking.rowNumber, 'CONFIRMED', fakeTransactionId);
+            
+            // 【新增】同時，直接在這裡發送「付款成功」的 LINE 通知
+            await sendPaymentSuccessMessage(env, booking);
+
+        } catch (e) {
+            console.error(`[Faking Success] Error updating sheet or sending message for ${bookingId}:`, e);
+            // 即使這裡出錯，我們仍然要讓使用者去付款，所以不中斷流程
+        }
+        
+        // 將付款連結回傳給前端
         return new Response(JSON.stringify({ paymentUrl }), { status: 200 });
     } else {
         console.error("LINE Pay Request API Error:", data.returnMessage);
