@@ -284,11 +284,16 @@ async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
     const requestUri = "/v3/payments/request";
     const signatureText = env.LINE_PAY_CHANNEL_SECRET + requestUri + JSON.stringify(requestBody) + nonce;
     const signature = await hmacSha256(signatureText, env.LINE_PAY_CHANNEL_SECRET);
-    const headers = { /* ... 內容不變 ... */ };
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-LINE-CHANNEL-ID': env.LINE_PAY_CHANNEL_ID,
+        'X-LINE-AUTHORIZATION-NONCE': nonce,
+        'X-LINE-AUTHORIZATION': signature
+    };
 
     const response = await fetch(`${LINE_PAY_API_URL}${requestUri}`, {
         method: 'POST',
-        headers,
+        headers: headers,
         body: JSON.stringify(requestBody)
     });
     const data = await response.json();
