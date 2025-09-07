@@ -2,6 +2,7 @@ import { SignJWT } from 'jose';
 import { v4 as uuidv4 } from 'uuid';
 
 // 輔助函式：將 Date 物件格式化為 "YYYY-MM-DD" 字串
+
 function formatDate(date) {
     if (!(date instanceof Date) || isNaN(date)) return null;
     const year = date.getFullYear();
@@ -18,6 +19,16 @@ async function hmacSha256(message, secret) {
     );
     const signature = await crypto.subtle.sign('HMAC', key, (new TextEncoder()).encode(message));
     return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
+function handleCorsPreflight() {
+    return new Response(null, {
+        headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+        },
+    });
 }
 
 // --- 主路由器 ---
@@ -73,14 +84,16 @@ export default {
         }
         return env.ASSETS.fetch(request);
     },
+    
     async scheduled(event, env, ctx) {
         console.log("[Cron] Scheduled sync triggered...");
         try {
             await syncAllSheetsToKV(env);
+            console.log("[Cron] Scheduled sync completed successfully.");
         } catch (error) {
             console.error("[Cron] Scheduled sync failed:", error);
         }
-    },
+    }
 };
 
 
@@ -91,8 +104,6 @@ async function handlePaymentWebhook(request, env) {
 
     try {
         const data = JSON.parse(bodyText);
-        
-        // 檢查是否是 LINE Pay V3 格式
         if (data.returnCode === '0000' && data.info && data.info.transactions) {
             const transaction = data.info.transactions[0];
             const bookingId = transaction.orderId;
@@ -111,13 +122,14 @@ async function handlePaymentWebhook(request, env) {
                 console.warn(`[Webhook] Booking not found, already processed, or in invalid state for bookingId: ${bookingId}`);
             }
         } else {
-             console.warn('[Webhook] Received webhook is not a successful LINE Pay V3 format.');
+             console.warn('[Webhook] Received webhook is not a successful LINE Pay format.');
         }
     } catch(e) {
         console.error('[Webhook] Error parsing webhook body:', e.message);
     }
     return new Response(JSON.stringify({ success: true }), { status: 200 });
 }
+
 
 async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
     const { bookingId } = await request.json();
@@ -409,17 +421,6 @@ async function handleCreateBooking(request, env) {
     return new Response(JSON.stringify({ success: true, bookingDetails: newBookingDetails }), { status: 201 });
 }
 
-function handleCorsPreflight() {
-    return new Response(null, {
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-        },
-    });
-}
-
-
 // --- 核心商業邏輯 ---
 async function cancelBookingInSheet(env, bookingId, lineUserId) {
     const allBookings = await fetchAllBookings(env, true);
@@ -567,6 +568,7 @@ async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
 // 位於 src/index.js
 
 
+// --- 寫入新訂單到 Sheet ---
 async function writeBookingToSheet(env, booking) {
     const availability = await getAvailabilityForRoom(env, booking.roomId, booking.checkInDate, booking.checkOutDate);
     if (availability.availableCount <= 0) {
@@ -575,11 +577,10 @@ async function writeBookingToSheet(env, booking) {
 
     const accessToken = await getGoogleAuthToken(env.GCP_SERVICE_ACCOUNT_KEY);
     const sheetId = env.GOOGLE_SHEET_ID;
-    const range = "bookings!A:L"; // 【修改】擴大範圍到 L 欄
+    const range = "bookings!A:L";
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED`;
     const timestamp = new Date().toISOString();
     const bookingId = `HB-${Date.now()}`;
-    // 【修改】最後一欄留空給 transactionId
     const newRow = [ bookingId, timestamp, booking.lineUserId || "", booking.lineDisplayName || "", booking.roomId, booking.checkInDate, booking.checkOutDate, booking.guestName, booking.guestPhone || "", booking.totalPrice, "PENDING_PAYMENT", "" ];
     
     const response = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ values: [newRow] }), });
@@ -589,8 +590,9 @@ async function writeBookingToSheet(env, booking) {
         throw new Error("寫入訂單至 Google Sheets 失敗");
     }
     
-    return { bookingId: bookingId };
+    return { bookingId };
 }
+
 
 // 【新增】獨立的更新 Google Sheet 狀態函式
 async function updateBookingStatusInSheet(env, rowNumber, status, transactionId = null) {
