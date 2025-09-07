@@ -538,34 +538,68 @@ async function syncAllSheetsToKV(env) {
     await env.ROOMS_KV.put("pricing_rules", JSON.stringify(pricingRules));
 }
 
+// --- 取得空房狀態 (修正版) ---
 async function getAvailabilityForRoom(env, roomId, startDateStr, endDateStr) {
-  const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
-  const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
-  const targetRoom = allRooms.find(room => room.id === roomId);
-  if (!targetRoom) {
-    return { error: 'Room not found', availableCount: 0 };
-  }
-  const bookings = await fetchAllBookings(env);
-  let minAvailableCount = Infinity;
-  const startDate = new Date(startDateStr);
-  const endDate = new Date(endDateStr);
-  for (let d = startDate; d < endDate; d.setDate(d.getDate() + 1)) {
-    const dateString = formatDate(new Date(d));
-    const dayOverrides = inventoryCalendar[dateString]?.[roomId];
-    if (dayOverrides?.isClosed) {
-      minAvailableCount = 0;
-      break; 
+    const allRooms = await env.ROOMS_KV.get('rooms_data', 'json');
+    const inventoryCalendar = await env.ROOMS_KV.get('inventory_calendar', 'json') || {};
+    const targetRoom = allRooms.find(room => room.id === roomId);
+
+    if (!targetRoom) {
+        console.error(`Availability check failed: Room with id ${roomId} not found.`);
+        return { error: 'Room not found', availableCount: 0 };
     }
-    let dayTotalQuantity = dayOverrides?.inventory ?? targetRoom.totalQuantity;
-    const occupiedCount = bookings.filter(b => b.roomId === roomId && b.status !== 'CANCELLED' && new Date(b.checkInDate) <= d && d < new Date(b.checkOutDate)).length;
-    const available = dayTotalQuantity - occupiedCount;
-    minAvailableCount = Math.min(minAvailableCount, available);
-  }
-  return {
-    roomId, startDate: startDateStr, endDate: endDateStr,
-    availableCount: Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount),
-  };
+
+    const bookings = await fetchAllBookings(env);
+    let minAvailableCount = Infinity;
+
+    // --- 【核心修正】改用更穩健的日期迭代方式，並強制使用 UTC 時區 ---
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+
+    // 建立一個新的日期物件用於迭代，避免修改原始日期
+    let currentDate = new Date(startDate);
+
+    while (currentDate < endDate) {
+        // 將迭代用的日期轉換為 YYYY-MM-DD 格式字串
+        const dateString = currentDate.getFullYear() + '-' +
+                         String(currentDate.getMonth() + 1).padStart(2, '0') + '-' +
+                         String(currentDate.getDate()).padStart(2, '0');
+        
+        const dayOverrides = inventoryCalendar[dateString]?.[roomId];
+        
+        if (dayOverrides?.isClosed) {
+            minAvailableCount = 0;
+            break; 
+        }
+
+        let dayTotalQuantity = dayOverrides?.inventory ?? targetRoom.totalQuantity;
+        
+        const occupiedCount = bookings.filter(b => {
+            const checkIn = new Date(b.checkInDate);
+            const checkOut = new Date(b.checkOutDate);
+            return b.roomId === roomId && b.status !== 'CANCELLED' && currentDate >= checkIn && currentDate < checkOut;
+        }).length;
+        
+        const available = dayTotalQuantity - occupiedCount;
+        minAvailableCount = Math.min(minAvailableCount, available);
+
+        // 日期加一天
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    // --- 修正結束 ---
+  
+    const finalCount = Math.max(0, minAvailableCount === Infinity ? targetRoom.totalQuantity : minAvailableCount);
+    
+    console.log(`Availability for room ${roomId} from ${startDateStr} to ${endDateStr}: ${finalCount}`);
+
+    return {
+        roomId,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        availableCount: finalCount,
+    };
 }
+
 
 async function calculateTotalPrice(env, roomId, startDateStr, endDateStr) {
     const allRooms = await env.ROOMS_KV.get("rooms_data", "json");
