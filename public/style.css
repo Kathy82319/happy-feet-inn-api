@@ -1,6 +1,6 @@
 /* --- 基本樣式重置與設定 --- */
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;margin:0;background-color:#f0f2f5;color:#1c1e21;line-height:1.5}
-header{background-color:#00b900;color:#fff;padding:1rem;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;margin:0;background-color:#f0f2f5;color:#333;line-height:1.5}
+header{background-color:#181c53;color:#fff;padding:1rem;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,.1)}
 header h1{margin:0;font-size:1.5rem}
 #user-profile{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:10px}
 #user-picture{width:40px;height:40px;border-radius:50%;border:2px solid #fff}
@@ -11,11 +11,11 @@ main{padding:1rem}
 .room-card img{width:100%;height:200px;object-fit:cover;display:block}
 .room-card-content{padding:1rem 1.25rem}
 .room-card-content h3{margin-top:0;margin-bottom:.5rem;font-size:1.25rem;color:#1c1e21}
-.room-card-content .price{font-size:1.2rem;font-weight:700;color:#00b900;margin:.5rem 0}
+.room-card-content .price{font-size:1.2rem;font-weight:700;color:#ffc107;margin:.5rem 0}
 .room-card-content .price span{font-size:.8rem;font-weight:400;color:#606770}
 .room-card-content p{font-size:.9rem;color:#606770;margin-bottom:1rem}
-.cta-button{display:block;width:100%;padding:12px;background-color:#ff6f61;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;text-align:center;cursor:pointer;margin-top:1rem;text-decoration:none;transition:background-color .2s}
-.cta-button:hover{background-color:#e65a4e}
+.cta-button{display:block;width:100%;padding:12px;background-color:#181c53;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;text-align:center;cursor:pointer;margin-top:1rem;text-decoration:none;transition:background-color .2s}
+.cta-button:hover{background-color:#2a307a}
 .cta-button:disabled{background-color:#ccc;cursor:not-allowed}
 .modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:flex;justify-content:center;align-items:center;z-index:1000;opacity:1;transition:opacity .3s ease}
 .close-button{position:absolute;top:10px;right:15px;background:0 0;border:none;font-size:1.8rem;color:#aaa;cursor:pointer;transition:color .2s}
@@ -28,63 +28,47 @@ main{padding:1rem}
 .error-text{color:#d9534f;font-size:.9rem;margin-top:.5rem;min-height:1.2em}
 .hidden{display:none!important}
 #loading-spinner{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.9);display:flex;flex-direction:column;justify-content:center;align-items:center;z-index:2000}
-.spinner{border:4px solid #f3f3f3;border-top:4px solid #00b900;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin-bottom:1rem}
+.spinner{border:4px solid #f3f3f3;border-top:4px solid #181c53;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin-bottom:1rem}
 @keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
 
-/* --- 【v4.3 終極覆蓋版】日曆樣式 --- */
-
-/* 使用 #app ID 來大幅提升權重，確保我們的樣式一定會生效 */
-
-/* 1. 中間範圍的日期 (函式庫內建的 in-range class) */
+/* --- 日曆樣式 --- */
 #app .datepicker-days .datepicker-cell.in-range:not(.start-date):not(.end-date) {
-    background-color: #e6f7ec !important; /* 淺綠色 */
+    background-color: #e4e5f0 !important;
     border-radius: 0 !important;
     color: #333 !important;
 }
-
-/* 2. 起始日期 */
 #app .datepicker-days .datepicker-cell.start-date {
-    background-color: #00B900 !important; /* LINE 綠 */
+    background-color: #181c53 !important;
     color: white !important;
     border-radius: 50px 0 0 50px !important;
 }
-
-/* 3. 結束日期 */
 #app .datepicker-days .datepicker-cell.end-date {
-    background-color: #00B900 !important; /* LINE 綠 */
+    background-color: #181c53 !important;
     color: white !important;
     border-radius: 0 50px 50px 0 !important;
 }
-
-/* 4. 如果只選了一天 (它同時是起點和終點) */
 #app .datepicker-days .datepicker-cell.start-date.end-date {
     border-radius: 50px !important;
 }
-
-/* 5. 確保 hover 效果不會破壞我們的樣式 */
 #app .datepicker-days .datepicker-cell.in-range:not(.start-date):not(.end-date):hover {
-    background-color: #c8e6c9 !important; /* 懸停時顏色加深一點 */
+    background-color: #d1d3e0 !important;
 }
-
-/* 6. 其他 UI 優化 */
 #app .datepicker-controls .prev-btn,
 #app .datepicker-controls .next-btn {
-    color: #00B900 !important;
+    color: #181c53 !important;
 }
 #app .datepicker-controls .button {
-    color: #00B900;
+    color: #181c53;
     font-weight: bold;
 }
 
 /* --- 我的訂單頁面專用樣式 --- */
-
 #booking-list-container {
     width: 100%;
     max-width: 800px;
     margin: 20px auto;
     padding: 0 10px;
 }
-
 .booking-card {
     background-color: #fff;
     border-radius: 8px;
@@ -93,11 +77,9 @@ main{padding:1rem}
     overflow: hidden;
     transition: transform 0.2s ease-in-out;
 }
-
 .booking-card:hover {
     transform: translateY(-5px);
 }
-
 .booking-card-header {
     display: flex;
     justify-content: space-between;
@@ -106,13 +88,11 @@ main{padding:1rem}
     background-color: #f7f7f7;
     border-bottom: 1px solid #eee;
 }
-
 .booking-card-header h3 {
     margin: 0;
     font-size: 1.1em;
     color: #333;
 }
-
 .status-badge {
     padding: 5px 12px;
     border-radius: 15px;
@@ -120,57 +100,48 @@ main{padding:1rem}
     font-weight: bold;
     color: #fff;
 }
-
-.status-badge.status-pending_payment { background-color: #ff9800; } /* 橘色 */
-.status-badge.status-confirmed { background-color: #4CAF50; } /* 綠色 */
-.status-badge.status-cancelled { background-color: #f44336; } /* 紅色 */
-.status-badge.status-completed { background-color: #607d8b; } /* 灰色 */
-
+.status-badge.status-pending_payment { background-color: #ff9800; }
+.status-badge.status-confirmed { background-color: #4CAF50; }
+.status-badge.status-cancelled { background-color: #f44336; }
+.status-badge.status-completed { background-color: #607d8b; }
 .booking-card-body {
     display: flex;
     padding: 20px;
     gap: 20px;
 }
-
 .booking-card-body img {
     width: 120px;
     height: 90px;
     object-fit: cover;
     border-radius: 6px;
 }
-
 .booking-details p {
     margin: 0 0 8px 0;
     font-size: 0.9em;
     color: #555;
 }
-
 .booking-details p strong {
     color: #333;
     margin-right: 5px;
 }
-
 .booking-card-footer {
     padding: 15px 20px;
     text-align: right;
     background-color: #f7f7f7;
     border-top: 1px solid #eee;
 }
-
 .booking-card-footer .cancel-button {
-    background-color: #f44336; /* 紅色 */
+    background-color: #f44336;
     border: none;
     padding: 8px 15px;
 }
 .booking-card-footer .cancel-button:hover {
     background-color: #d32f2f;
 }
-
 .back-button-container {
     text-align: center;
     margin-top: 30px;
 }
-
 #no-booking-message, .error-message {
     text-align: center;
     padding: 40px;
@@ -178,48 +149,39 @@ main{padding:1rem}
     font-size: 1.1em;
 }
 
-/* --- 【v3.0 新增】主導覽列樣式 --- */
-
+/* --- 主導覽列樣式 --- */
 .main-nav {
     display: flex;
     justify-content: center;
-    background-color: #f0f0f0;
+    background-color: #e4e5f0;
     padding: 10px 0;
     border-radius: 8px;
     margin-top: 15px;
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
 }
-
 .nav-link {
     padding: 10px 20px;
     margin: 0 5px;
     text-decoration: none;
-    color: #555;
+    color: #333;
     font-weight: bold;
     border-radius: 6px;
     transition: all 0.2s ease-in-out;
 }
-
 .nav-link:hover {
-    background-color: #e0e0e0;
+    background-color: #d1d3e0;
     color: #000;
 }
-
-/* 當前所在頁面的高亮樣式 */
 .nav-link.active {
-    background-color: #00B900; /* LINE Green */
+    background-color: #181c53;
     color: #fff;
     cursor: default;
 }
-
-/* 移除 h1 的下邊距，讓排版更緊湊 */
 header h1 {
     margin-bottom: 10px;
 }
 
-/* --- 【v4.2 最終穩健版】訂房視窗樣式 --- */
-
-/* 這是視窗的黑色半透明背景 */
+/* --- 訂房視窗樣式 --- */
 #booking-modal {
     position: fixed;
     z-index: 1000;
@@ -228,18 +190,12 @@ header h1 {
     width: 100%;
     height: 100%;
     background-color: rgba(0,0,0,0.6);
-    
-    /* 使用 Flexbox 將內容垂直和水平置中 */
     display: flex;
     justify-content: center;
     align-items: center;
-
-    /* 動畫效果 */
     opacity: 1;
     transition: opacity 0.3s ease;
 }
-
-/* 這是視窗的主體內容框 */
 #booking-modal .modal-content {
     background-color: #fff;
     padding: 25px;
@@ -247,12 +203,10 @@ header h1 {
     box-shadow: 0 5px 20px rgba(0,0,0,0.25);
     width: 90%;
     max-width: 500px;
-    max-height: 90vh; /* 避免在小螢幕上超出畫面 */
-    overflow-y: auto; /* 如果內容太多，允許滾動 */
-    position: relative; /* 為了關閉按鈕的定位 */
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
 }
-
-/* 關閉按鈕的樣式 */
 #booking-modal .close-button {
     position: absolute;
     top: 10px;
@@ -263,35 +217,24 @@ header h1 {
     cursor: pointer;
     transition: color 0.2s;
 }
-
 #booking-modal .close-button:hover {
     color: #333;
 }
-
-/* 隱藏狀態 */
 #booking-modal.hidden {
-    /* display: none; */
-    /* 改用透明度和事件穿透，讓動畫更流暢 */
     opacity: 0;
     pointer-events: none;
 }
 
-
-
-/*【v3.1 新增】已取消訂單的特殊樣式 */
+/* --- 已取消訂單的特殊樣式 --- */
 .booking-card.cancelled-card {
-    opacity: 0.6; /* 讓整張卡片變淡 */
-    background-color: #f9f9f9; /* 給一個略灰的背景 */
+    opacity: 0.6;
+    background-color: #f9f9f9;
 }
-
-/* 也可以讓變淡的效果更明顯 */
 .booking-card.cancelled-card .booking-card-body img {
-    filter: grayscale(80%); /* 讓圖片變灰階 */
+    filter: grayscale(80%);
 }
 
-/* --- 【新增】訂單明細視窗樣式 --- */
-
-/* 沿用 booking-modal 的樣式基礎 */
+/* --- 訂單明細視窗樣式 --- */
 .modal-overlay {
     position: fixed;
     z-index: 1000;
@@ -306,12 +249,10 @@ header h1 {
     opacity: 1;
     transition: opacity 0.3s ease;
 }
-
 .modal-overlay.hidden {
     opacity: 0;
     pointer-events: none;
 }
-
 .modal-overlay .modal-content {
     background-color: #fff;
     padding: 25px;
@@ -322,37 +263,30 @@ header h1 {
     max-height: 90vh;
     overflow-y: auto;
 }
-
 #details-modal-content h4 {
     margin-top: 20px;
     margin-bottom: 10px;
     color: #333;
 }
-
 #details-modal-content ul {
     padding-left: 20px;
     line-height: 1.8;
     color: #555;
 }
-
 #details-modal-content hr {
     border: 0;
     border-top: 1px solid #eee;
     margin: 20px 0;
 }
 
-
-/* --- 【新增】可點擊的訂單卡片樣式 --- */
-
+/* --- 可點擊的訂單卡片樣式 --- */
 .booking-card.pending-card {
     cursor: pointer;
-    border-left: 4px solid #ff9800; /* 用橘色左框線來提示 */
+    border-left: 4px solid #ff9800;
 }
-
 .booking-card.pending-card:hover {
-    background-color: #fffaf0; /* 滑鼠移上去時給個淡淡的背景色 */
+    background-color: #fffaf0;
 }
-
 .booking-card-footer .footer-note {
     font-size: 0.8em;
     color: #888;
@@ -360,9 +294,7 @@ header h1 {
     margin: 0;
 }
 
-/* 位於 public/style.css 檔案結尾 */
-
-/* --- 【新增】房型卡片上的價格摘要 --- */
+/* --- 房型卡片上的價格摘要 --- */
 .room-card-content .price-summary {
     font-size: 0.9rem;
     color: #606770;
@@ -370,14 +302,14 @@ header h1 {
     line-height: 1.4;
 }
 
-/* --- 【新增】房型卡片按鈕容器 --- */
+/* --- 房型卡片按鈕容器 --- */
 .card-actions {
     display: flex;
     gap: 10px;
     margin-top: 1rem;
 }
 
-/* --- 【新增】次要按鈕樣式 (查看詳情) --- */
+/* --- 次要按鈕樣式 (查看詳情) --- */
 .cta-button.secondary {
     background-color: #e4e6eb;
     color: #333;
@@ -386,37 +318,32 @@ header h1 {
     background-color: #d8dbdf;
 }
 
-
-/* --- 【新增】房型詳細視窗樣式 --- */
+/* --- 房型詳細視窗樣式 --- */
 #room-details-modal .modal-content.large {
-    max-width: 800px; /* 讓視窗可以更寬 */
-    padding: 0; /* 移除內邊距，讓圖片可以貼齊邊緣 */
-    overflow: hidden; /* 隱藏超出圓角的內容 */
+    max-width: 800px;
+    padding: 0;
+    overflow: hidden;
 }
-
 #room-details-modal .close-button {
-    z-index: 10; /* 確保關閉按鈕在圖片之上 */
+    z-index: 10;
     color: #fff;
     text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 #room-details-modal .close-button:hover {
     color: #eee;
 }
-
 #details-content {
     display: flex;
     flex-direction: column;
 }
-
 @media (min-width: 768px) {
     #details-content {
-        flex-direction: row; /* 在大螢幕上改為左右排版 */
+        flex-direction: row;
         max-height: 80vh;
     }
 }
-
 .details-gallery {
-    flex: 1.5; /* 圖片區域佔比較大 */
+    flex: 1.5;
     background-color: #f0f0f0;
 }
 .details-gallery img {
@@ -425,9 +352,8 @@ header h1 {
     object-fit: cover;
     display: block;
 }
-
 .details-info {
-    flex: 1; /* 文字區域佔比較小 */
+    flex: 1;
     padding: 2rem;
     overflow-y: auto;
 }
@@ -438,7 +364,7 @@ header h1 {
 .details-info .price {
     font-size: 1.3rem;
     font-weight: bold;
-    color: #00b900;
+    color: #ffc107;
     margin-bottom: 1.5rem;
 }
 .details-info .description {
@@ -450,22 +376,19 @@ header h1 {
     margin-top: 2rem;
 }
 
-/* --- 【新增】圖片輪播藝廊樣式 --- */
+/* --- 圖片輪播藝廊樣式 --- */
 .details-gallery {
-    position: relative; /* 為了讓導航按鈕可以定位 */
+    position: relative;
     overflow: hidden;
 }
-
 .slide {
-    display: none; /* 預設所有圖片都隱藏 */
+    display: none;
     width: 100%;
     height: 100%;
 }
-
 .slide.active {
-    display: block; /* 只顯示當前 active 的圖片 */
+    display: block;
 }
-
 .gallery-nav {
     position: absolute;
     top: 50%;
@@ -484,7 +407,7 @@ header h1 {
 .gallery-nav.prev { left: 10px; }
 .gallery-nav.next { right: 10px; }
 
-/* --- 【新增】訂單明細中的聯絡資訊樣式 --- */
+/* --- 訂單明細中的聯絡資訊樣式 --- */
 .contact-info {
     margin-top: 20px;
     padding: 15px;
@@ -492,27 +415,22 @@ header h1 {
     border-radius: 8px;
     border: 1px solid #eee;
 }
-
 .contact-info h4 {
     margin-top: 0;
     margin-bottom: 12px;
     color: #333;
 }
-
 .contact-info p {
     margin: 5px 0;
     font-size: 0.95em;
 }
-
 .contact-info a {
-    color: #007bff; /* 使用藍色來突顯這是一個連結 */
+    color: #007bff;
     text-decoration: none;
 }
-
 .contact-info a:hover {
     text-decoration: underline;
 }
-
 #close-details-modal {
-    margin-top: 20px; /* 讓關閉按鈕跟聯絡資訊有點間距 */
+    margin-top: 20px;
 }

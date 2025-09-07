@@ -309,7 +309,7 @@ async function submitBooking() {
 
         // 恢復成最終的成功訊息與自動關閉流程
         submitBookingButton.textContent = '訂房成功！';
-        submitBookingButton.style.backgroundColor = '#00B900';
+        submitBookingButton.style.backgroundColor = '#181c53';
         bookingErrorEl.textContent = '';
         availabilityResultEl.textContent = `訂單 ${result.bookingDetails.bookingId} 已送出，確認訊息已發送至您的 LINE！ 3 秒後將關閉視窗。`;
 
