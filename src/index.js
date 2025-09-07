@@ -162,7 +162,6 @@ async function handleCreatePayment(request, env, LINE_PAY_API_URL) {
     const fakePaymentUrl = `https://${new URL(request.url).hostname}/payment-result.html?orderId=${bookingId}&status=bypass_success`;
     
     return new Response(JSON.stringify({ paymentUrl: fakePaymentUrl }), { status: 200 });
-}
 
     
     const nonce = uuidv4();
