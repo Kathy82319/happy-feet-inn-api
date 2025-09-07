@@ -10,41 +10,45 @@ function formatDate(date) {
     return `${year}-${month}-${day}`;
 }
 
+async function hmacSha256(message, secret) {
+    const key = await crypto.subtle.importKey(
+        'raw', (new TextEncoder()).encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false, ['sign']
+    );
+    const signature = await crypto.subtle.sign('HMAC', key, (new TextEncoder()).encode(message));
+    return btoa(String.fromCharCode(...new Uint8Array(signature)));
+}
+
 // --- 主路由器 ---
 export default {
     async fetch(request, env, ctx) {
-        const url = new URL(request.url);
+        const url = new new URL(request.url);
         const pathname = url.pathname;
         const method = request.method;
 
-        // --- 【新增】Webhook 路由器邏輯 ---
-        // 我們將 LINE Developer 後台的 Webhook URL 統一指向這裡
+        // --- Webhook 路由器 ---
         if (pathname === '/api/webhook-router' && method === 'POST') {
             const signature = request.headers.get('X-Line-Signature');
-            
-            // 判斷：有 X-Line-Signature 的是來自 Messaging API 的使用者訊息
             if (signature) {
                 console.log('[Router] Forwarding user message to Auto-Reply Bot...');
-                // 將請求原封不動地轉發給您的自動回覆機器人
-                // 這個 URL 需要您在 wrangler.toml 中設定
+                if (!env.AUTO_REPLY_BOT_URL) {
+                    console.error("[Router] AUTO_REPLY_BOT_URL is not set!");
+                    return new Response("Router misconfigured", { status: 500 });
+                }
                 return fetch(env.AUTO_REPLY_BOT_URL, request);
-            }
-            // 判斷：如果不是使用者訊息，我們就當作它是 LINE Pay 的通知
-            else {
-                console.log('[Router] Processing internal payment webhook...');
-                // 直接在內部呼叫處理付款的函式
-                return await handlePaymentWebhook(request, env);
+            } else {
+                console.log('[Router] Received a non-user message, assuming it is for payment processing...');
+                return handlePaymentWebhook(request, env);
             }
         }
-        // --- 路由器邏輯結束 ---
         
+        // --- API 路由 ---
         const LINE_PAY_API_URL = "https://sandbox-api-pay.line.me";
-
-        console.log(`[Request] Method: ${method}, Path: ${pathname}`);
-
+        
         if (pathname.startsWith('/api/')) {
             if (method === 'OPTIONS') return handleCorsPreflight();
-           try {
+            try {
                 let response;
                 if (pathname === '/api/rooms' && method === 'GET') response = await handleGetRooms(request, env);
                 else if (pathname === '/api/sync' && method === 'GET') response = await handleSync(request, env);
@@ -54,7 +58,6 @@ export default {
                 else if (pathname === '/api/my-bookings' && method === 'GET') response = await handleGetMyBookings(request, env);
                 else if (pathname === '/api/bookings/cancel' && method === 'POST') response = await handleCancelBooking(request, env);
                 else if (pathname === '/api/room-details' && method === 'GET') response = await handleGetRoomDetails(request, env);
-                // --- 【新增】處理付款的 API 端點 ---
                 else if (pathname === '/api/payment/create' && method === 'POST') response = await handleCreatePayment(request, env, LINE_PAY_API_URL);
                 else response = new Response(JSON.stringify({ error: 'API endpoint not found' }), { status: 404 });
 
@@ -74,7 +77,6 @@ export default {
         console.log("[Cron] Scheduled sync triggered...");
         try {
             await syncAllSheetsToKV(env);
-            console.log("[Cron] Scheduled sync completed successfully.");
         } catch (error) {
             console.error("[Cron] Scheduled sync failed:", error);
         }
@@ -82,39 +84,38 @@ export default {
 };
 
 
-// --- 金流相關 API 處理函式 ---
-
+// --- 金流 Webhook 處理函式 ---
 async function handlePaymentWebhook(request, env) {
-    const signature = request.headers.get('X-Line-Signature'); // 雖然沒用到，但保留供未來驗證
     const bodyText = await request.text();
     console.log('[Webhook] Received Raw Body:', bodyText);
 
     try {
         const data = JSON.parse(bodyText);
-        // LINE Pay V3 Webhook 的交易資訊在 a JSON string field
-        const transactionInfo = JSON.parse(data.body);
-        const transaction = transactionInfo.info.transactions[0];
-        const bookingId = transaction.orderId;
-        const transactionId = transaction.transactionId;
-
-        console.log(`[Webhook] Processing bookingId: ${bookingId}, transactionId: ${transactionId}`);
-
-        if (transactionInfo.returnCode === '0000') {
+        
+        // 檢查是否是 LINE Pay V3 格式
+        if (data.returnCode === '0000' && data.info && data.info.transactions) {
+            const transaction = data.info.transactions[0];
+            const bookingId = transaction.orderId;
+            const transactionId = transaction.transactionId;
+            
+            console.log(`[Webhook] Processing bookingId: ${bookingId}, transactionId: ${transactionId}`);
+            
             const allBookings = await fetchAllBookings(env, true);
             const targetBooking = allBookings.find(b => b.bookingId === bookingId);
 
             if (targetBooking && targetBooking.status === 'PENDING_PAYMENT') {
                 await updateBookingStatusInSheet(env, targetBooking.rowNumber, 'CONFIRMED', transactionId);
-                await sendPaymentSuccessMessage(env, targetBooking.lineUserId, targetBooking);
-                 console.log(`[Webhook] Successfully processed and confirmed bookingId: ${bookingId}`);
+                await sendPaymentSuccessMessage(env, targetBooking);
+                console.log(`[Webhook] Successfully confirmed bookingId: ${bookingId}`);
             } else {
                 console.warn(`[Webhook] Booking not found, already processed, or in invalid state for bookingId: ${bookingId}`);
             }
+        } else {
+             console.warn('[Webhook] Received webhook is not a successful LINE Pay V3 format.');
         }
     } catch(e) {
-        console.error('[Webhook] Error parsing webhook body:', e);
+        console.error('[Webhook] Error parsing webhook body:', e.message);
     }
-
     return new Response(JSON.stringify({ success: true }), { status: 200 });
 }
 
