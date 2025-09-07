@@ -3,7 +3,7 @@
 # 即使我們沒有用到 WASM 或 D1，保留空設定有助於穩定性
 [wasm_modules]
 [d1_databases]
-
+ 
 name = "happy-feet-inn-api"
 main = "src/index.js"
 compatibility_date = "2025-08-31" # 你可以使用今天的日期
